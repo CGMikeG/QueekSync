@@ -1,0 +1,294 @@
+"""
+Main application window and top-level wiring.
+"""
+
+from __future__ import annotations
+
+import queue
+import sys
+import threading
+from typing import Callable, Dict, Optional
+
+import customtkinter as ctk
+
+from core.config import ConfigManager
+from core.profile import ProfileManager
+from core.scheduler import SyncScheduler
+from core.syncer import SyncEngine, SyncEvent, SyncStatus
+from core.watcher import WatcherManager
+from ui import theme as T
+from ui.sidebar import Sidebar
+
+
+class QSyncApp:
+    """Application entry-point; owns the main CTk window and all shared state."""
+
+    def __init__(self) -> None:
+        # ---- configuration & data ---------------------------------
+        self.config_mgr = ConfigManager()
+        self.profile_mgr = ProfileManager()
+        cfg = self.config_mgr.config
+
+        # ---- customtkinter global setup ---------------------------
+        appearance = cfg.theme if cfg.theme in ("dark", "light") else "dark"
+        ctk.set_appearance_mode(appearance)
+        ctk.set_default_color_theme("blue")
+
+        # ---- main window ------------------------------------------
+        self.root = ctk.CTk()
+        self.root.title("QSync — File Synchronisation")
+        self.root.geometry(f"{cfg.window_width}x{cfg.window_height}")
+        self.root.minsize(900, 600)
+        self.root.configure(fg_color=T.BG_ROOT)
+
+        # Subtle window transparency (works on Windows & most Linux compositors)
+        try:
+            self.root.attributes("-alpha", 0.97)
+        except Exception:
+            pass
+
+        # DWM Acrylic blur on Windows 10/11
+        if sys.platform == "win32":
+            self._enable_win_blur()
+
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        # ---- shared runtime state ---------------------------------
+        self._engines: Dict[str, SyncEngine] = {}   # profile_id → engine
+        self._event_queue: queue.Queue[SyncEvent] = queue.Queue()
+
+        # ---- background services ----------------------------------
+        self._scheduler = SyncScheduler(on_trigger=self._schedule_trigger)
+        self._watcher_mgr = WatcherManager(on_change=self._watch_trigger)
+
+        # Initialise scheduler for existing profiles
+        for p in self.profile_mgr.all():
+            self._scheduler.update_profile(p)
+            self._watcher_mgr.update(p)
+        self._scheduler.start()
+
+        # ---- build UI ---------------------------------------------
+        self._panels: Dict[str, ctk.CTkFrame] = {}
+        self._active_panel: str = ""
+        self._build_ui()
+
+        # ---- start event pump -------------------------------------
+        self._pump_events()
+
+    # ==================================================================
+    # UI construction
+    # ==================================================================
+
+    def _build_ui(self) -> None:
+        self.root.grid_columnconfigure(1, weight=1)
+        self.root.grid_rowconfigure(0, weight=1)
+
+        # Sidebar
+        self.sidebar = Sidebar(self.root, on_navigate=self.navigate)
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
+
+        # Content container
+        self._content = ctk.CTkFrame(self.root, fg_color=T.BG_PANEL, corner_radius=0)
+        self._content.grid(row=0, column=1, sticky="nsew")
+        self._content.grid_columnconfigure(0, weight=1)
+        self._content.grid_rowconfigure(1, weight=1)
+
+        # Header bar
+        self._header = ctk.CTkFrame(
+            self._content,
+            fg_color=T.BG_PANEL,
+            corner_radius=0,
+            height=T.HEADER_H,
+            border_color=T.BORDER,
+            border_width=0,
+        )
+        self._header.grid(row=0, column=0, sticky="ew")
+        self._header.grid_propagate(False)
+
+        self._header_title = ctk.CTkLabel(
+            self._header,
+            text="Dashboard",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=T.TEXT,
+        )
+        self._header_title.pack(side="left", padx=T.PAD_LG, pady=T.PAD_SM)
+
+        # Panel host frame
+        self._panel_host = ctk.CTkFrame(self._content, fg_color="transparent", corner_radius=0)
+        self._panel_host.grid(row=1, column=0, sticky="nsew")
+        self._panel_host.grid_columnconfigure(0, weight=1)
+        self._panel_host.grid_rowconfigure(0, weight=1)
+
+        # Lazy-load panels on first navigation
+        self.navigate("dashboard")
+
+    # ==================================================================
+    # Navigation
+    # ==================================================================
+
+    _PAGE_TITLES = {
+        "dashboard": "Dashboard",
+        "profiles":  "Profiles",
+        "monitor":   "Monitor",
+        "settings":  "Settings",
+    }
+
+    def navigate(self, page_id: str) -> None:
+        if page_id == self._active_panel:
+            return
+
+        # Hide current panel
+        if self._active_panel and self._active_panel in self._panels:
+            self._panels[self._active_panel].grid_remove()
+
+        # Lazy-create panel
+        if page_id not in self._panels:
+            self._panels[page_id] = self._create_panel(page_id)
+
+        self._panels[page_id].grid(row=0, column=0, sticky="nsew")
+        self._active_panel = page_id
+        self.sidebar.set_active(page_id)
+        self._header_title.configure(text=self._PAGE_TITLES.get(page_id, page_id.title()))
+
+    def _create_panel(self, page_id: str) -> ctk.CTkFrame:
+        from ui.dashboard import DashboardPanel
+        from ui.monitor_panel import MonitorPanel
+        from ui.profiles_panel import ProfilesPanel
+        from ui.settings_panel import SettingsPanel
+
+        host = self._panel_host
+        if page_id == "dashboard":
+            return DashboardPanel(host, app=self)
+        if page_id == "profiles":
+            return ProfilesPanel(host, app=self)
+        if page_id == "monitor":
+            return MonitorPanel(host, app=self)
+        if page_id == "settings":
+            return SettingsPanel(host, app=self)
+        return ctk.CTkFrame(host, fg_color="transparent")
+
+    def refresh_panel(self, page_id: str) -> None:
+        """Destroy and recreate a panel so it picks up data changes."""
+        if page_id in self._panels:
+            self._panels[page_id].destroy()
+            del self._panels[page_id]
+        if self._active_panel == page_id:
+            self._active_panel = ""
+            self.navigate(page_id)
+
+    # ==================================================================
+    # Sync operations (called from UI)
+    # ==================================================================
+
+    def start_sync(self, profile_id: str) -> None:
+        profile = self.profile_mgr.get(profile_id)
+        if profile is None:
+            return
+        if profile_id in self._engines and self._engines[profile_id].is_running():
+            return  # already running
+
+        def _cb(event: SyncEvent) -> None:
+            self._event_queue.put(event)
+            # Also tag with profile_id for the monitor panel
+            event._profile_id = profile_id  # type: ignore[attr-defined]
+
+        profile.last_sync_status = "running"
+        self.profile_mgr.save(profile)
+
+        engine = SyncEngine(profile, event_cb=_cb)
+        self._engines[profile_id] = engine
+        engine.start(blocking=False)
+
+        # Navigate to monitor
+        self.navigate("monitor")
+
+    def cancel_sync(self, profile_id: str) -> None:
+        engine = self._engines.get(profile_id)
+        if engine:
+            engine.cancel()
+
+    def get_engine(self, profile_id: str) -> Optional[SyncEngine]:
+        return self._engines.get(profile_id)
+
+    def is_syncing(self, profile_id: str) -> bool:
+        engine = self._engines.get(profile_id)
+        return engine is not None and engine.is_running()
+
+    # ==================================================================
+    # Background triggers
+    # ==================================================================
+
+    def _schedule_trigger(self, profile_id: str) -> None:
+        self.start_sync(profile_id)
+
+    def _watch_trigger(self, profile_id: str) -> None:
+        if not self.is_syncing(profile_id):
+            self.start_sync(profile_id)
+
+    # ==================================================================
+    # Event pump (queue → UI thread)
+    # ==================================================================
+
+    def _pump_events(self) -> None:
+        """Poll the event queue and forward to the Monitor panel."""
+        try:
+            while True:
+                event = self._event_queue.get_nowait()
+                self._dispatch_event(event)
+        except queue.Empty:
+            pass
+        finally:
+            self.root.after(100, self._pump_events)
+
+    def _dispatch_event(self, event: SyncEvent) -> None:
+        # Forward to monitor panel if it exists
+        if "monitor" in self._panels:
+            self._panels["monitor"].on_sync_event(event)  # type: ignore[attr-defined]
+        # Refresh dashboard card when sync finishes
+        if event.kind in ("success", "error", "warning") and "dashboard" in self._panels:
+            self._panels["dashboard"].refresh()  # type: ignore[attr-defined]
+
+    # ==================================================================
+    # Window close
+    # ==================================================================
+
+    def _on_close(self) -> None:
+        # Persist window size
+        self.config_mgr.config.window_width = self.root.winfo_width()
+        self.config_mgr.config.window_height = self.root.winfo_height()
+        self.config_mgr.save()
+
+        self._scheduler.stop()
+        self._watcher_mgr.stop_all()
+        self.root.destroy()
+
+    # ==================================================================
+    # Windows DWM glass
+    # ==================================================================
+
+    def _enable_win_blur(self) -> None:
+        try:
+            import ctypes
+            from ctypes import wintypes  # noqa: F401
+
+            HWND = ctypes.windll.user32.GetParent(self.root.winfo_id())
+
+            class _MARGINS(ctypes.Structure):
+                _fields_ = [
+                    ("cxLeftWidth",    ctypes.c_int),
+                    ("cxRightWidth",   ctypes.c_int),
+                    ("cyTopHeight",    ctypes.c_int),
+                    ("cyBottomHeight", ctypes.c_int),
+                ]
+
+            margins = _MARGINS(-1, -1, -1, -1)
+            ctypes.windll.dwmapi.DwmExtendFrameIntoClientArea(HWND, ctypes.byref(margins))
+        except Exception:
+            pass  # Graceful degradation on unsupported platforms
+
+    # ==================================================================
+    # Main loop
+    # ==================================================================
+
+    def run(self) -> None:
+        self.root.mainloop()

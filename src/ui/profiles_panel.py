@@ -1,0 +1,241 @@
+"""
+Profiles panel – list view with CRUD operations.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import TYPE_CHECKING, Optional
+
+import customtkinter as ctk
+
+from ui import theme as T
+from ui.components import (
+    DangerButton,
+    GlassCard,
+    PrimaryButton,
+    Separator,
+    StatusBadge,
+)
+
+if TYPE_CHECKING:
+    from ui.app import QSyncApp
+
+
+class ProfileRow(GlassCard):
+    """Single row in the profile list."""
+
+    def __init__(self, master, profile, app: "QSyncApp", **kw) -> None:
+        kw.setdefault("height", 72)
+        super().__init__(master, **kw)
+        self.pack_propagate(False)
+        self._profile = profile
+        self._app = app
+        self._build()
+
+    def _build(self) -> None:
+        p = self._profile
+
+        # Left accent stripe
+        ctk.CTkFrame(self, fg_color=p.color, width=4, corner_radius=0).place(
+            x=0, y=0, relheight=1.0
+        )
+
+        inner = ctk.CTkFrame(self, fg_color="transparent")
+        inner.place(x=12, y=0, relwidth=1.0, relheight=1.0)
+
+        # Name + description
+        left = ctk.CTkFrame(inner, fg_color="transparent")
+        left.pack(side="left", fill="y", pady=8)
+
+        ctk.CTkLabel(
+            left,
+            text=p.name,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=T.TEXT,
+            anchor="w",
+        ).pack(anchor="w")
+
+        desc = p.description or f"{p.source.display_label()}  →  {p.destination.display_label()}"
+        ctk.CTkLabel(
+            left,
+            text=desc[:80] + ("…" if len(desc) > 80 else ""),
+            font=ctk.CTkFont(size=11),
+            text_color=T.TEXT_MUTED,
+            anchor="w",
+        ).pack(anchor="w")
+
+        # Right side
+        right = ctk.CTkFrame(inner, fg_color="transparent")
+        right.pack(side="right", fill="y", padx=(0, 10), pady=10)
+
+        StatusBadge(right, status=p.last_sync_status).pack(side="right", padx=6, anchor="center")
+
+        # Schedule indicator
+        if p.schedule.enabled:
+            ctk.CTkLabel(
+                right,
+                text=f"⏱ every {p.schedule.interval_minutes}m",
+                font=ctk.CTkFont(size=11),
+                text_color=T.TEXT_DIM,
+            ).pack(side="right", padx=4, anchor="center")
+
+        # Action buttons
+        btn_frame = ctk.CTkFrame(right, fg_color="transparent")
+        btn_frame.pack(side="right", padx=4, anchor="center")
+
+        for label, cmd, fg, hover in [
+            ("▶", self._sync,      T.ACCENT,    T.ACCENT_HOVER),
+            ("✎", self._edit,      T.BG_CARD,   T.BG_HOVER),
+            ("⧉", self._duplicate, T.BG_CARD,   T.BG_HOVER),
+            ("✕", self._delete,    "#450a0a",   "#7f1d1d"),
+        ]:
+            ctk.CTkButton(
+                btn_frame,
+                text=label,
+                width=32,
+                height=32,
+                corner_radius=T.RADIUS_SM,
+                font=ctk.CTkFont(size=14),
+                fg_color=fg,
+                hover_color=hover,
+                text_color=T.TEXT,
+                border_width=1,
+                border_color=T.BORDER,
+                command=cmd,
+            ).pack(side="left", padx=2)
+
+    # ------------------------------------------------------------------
+
+    def _sync(self) -> None:
+        self._app.start_sync(self._profile.id)
+
+    def _edit(self) -> None:
+        from ui.profile_editor import ProfileEditorDialog
+        ProfileEditorDialog(
+            self._app.root,
+            profile=self._profile,
+            on_save=self._on_save,
+        ).focus()
+
+    def _duplicate(self) -> None:
+        self._app.profile_mgr.duplicate(self._profile.id)
+        self._app.refresh_panel("profiles")
+        self._app.refresh_panel("dashboard")
+
+    def _delete(self) -> None:
+        from tkinter import messagebox
+        if messagebox.askyesno(
+            "Delete Profile",
+            f"Delete profile  '{self._profile.name}'?\nThis cannot be undone.",
+            icon="warning",
+        ):
+            self._app._scheduler.remove_profile(self._profile.id)
+            self._app._watcher_mgr.remove(self._profile.id)
+            self._app.profile_mgr.delete(self._profile.id)
+            self._app.refresh_panel("profiles")
+            self._app.refresh_panel("dashboard")
+
+    def _on_save(self, profile) -> None:
+        self._app.profile_mgr.save(profile)
+        self._app._scheduler.update_profile(profile)
+        self._app._watcher_mgr.update(profile)
+        self._app.refresh_panel("profiles")
+        self._app.refresh_panel("dashboard")
+
+
+# ---------------------------------------------------------------------------
+
+class ProfilesPanel(ctk.CTkFrame):
+    def __init__(self, master, app: "QSyncApp", **kw) -> None:
+        kw.setdefault("fg_color", "transparent")
+        super().__init__(master, **kw)
+        self._app = app
+        self.grid_columnconfigure(0, weight=1)
+        self._build()
+
+    def _build(self) -> None:
+        profiles = self._app.profile_mgr.all()
+        profiles_sorted = sorted(profiles, key=lambda p: p.name)
+
+        # Toolbar
+        toolbar = ctk.CTkFrame(self, fg_color="transparent")
+        toolbar.grid(row=0, column=0, sticky="ew", padx=T.PAD_LG, pady=T.PAD_MD)
+
+        ctk.CTkLabel(
+            toolbar,
+            text=f"{len(profiles)} profile(s)",
+            font=ctk.CTkFont(size=12),
+            text_color=T.TEXT_MUTED,
+        ).pack(side="left")
+
+        PrimaryButton(
+            toolbar,
+            text="＋  New Profile",
+            command=self._new_profile,
+        ).pack(side="right")
+
+        ctk.CTkButton(
+            toolbar,
+            text="⟳  Sync All",
+            height=36,
+            corner_radius=T.RADIUS_MD,
+            font=ctk.CTkFont(size=13),
+            fg_color="transparent",
+            hover_color=T.BG_HOVER,
+            text_color=T.TEXT_MUTED,
+            border_color=T.BORDER,
+            border_width=1,
+            command=self._sync_all,
+        ).pack(side="right", padx=(0, T.PAD_SM))
+
+        Separator(self).grid(row=1, column=0, sticky="ew", padx=T.PAD_LG)
+
+        # Scrollable list
+        scroll = ctk.CTkScrollableFrame(
+            self,
+            fg_color="transparent",
+            scrollbar_button_color=T.BORDER,
+            scrollbar_button_hover_color=T.BORDER_BRIGHT,
+        )
+        scroll.grid(row=2, column=0, sticky="nsew", padx=T.PAD_LG, pady=T.PAD_SM)
+        self.grid_rowconfigure(2, weight=1)
+
+        if not profiles:
+            ctk.CTkLabel(
+                scroll,
+                text="No profiles yet.\nUse  ＋ New Profile  to create your first sync.",
+                font=ctk.CTkFont(size=14),
+                text_color=T.TEXT_DIM,
+                justify="center",
+            ).pack(expand=True, pady=80)
+            return
+
+        for p in profiles_sorted:
+            ProfileRow(scroll, p, self._app).pack(
+                fill="x", pady=(0, T.CARD_GAP // 2)
+            )
+
+    # ------------------------------------------------------------------
+
+    def _new_profile(self) -> None:
+        from core.profile import Profile
+        from ui.profile_editor import ProfileEditorDialog
+
+        ProfileEditorDialog(
+            self._app.root,
+            profile=Profile(),
+            on_save=self._on_save,
+        ).focus()
+
+    def _sync_all(self) -> None:
+        for p in self._app.profile_mgr.all():
+            if p.enabled and not self._app.is_syncing(p.id):
+                self._app.start_sync(p.id)
+
+    def _on_save(self, profile) -> None:
+        self._app.profile_mgr.save(profile)
+        self._app._scheduler.update_profile(profile)
+        self._app._watcher_mgr.update(profile)
+        self._app.refresh_panel("profiles")
+        self._app.refresh_panel("dashboard")
