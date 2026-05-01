@@ -11,6 +11,10 @@ from pathlib import Path
 from typing import Optional
 
 
+APP_DIR_NAME = "QueekSync"
+LEGACY_APP_DIR_NAME = "QSync"
+
+
 @dataclass
 class AppConfig:
     theme: str = "dark"                   # "dark" | "light" | "system"
@@ -42,7 +46,7 @@ class ConfigManager:
                 base = os.environ.get("APPDATA", os.path.expanduser("~"))
             else:
                 base = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
-            self._config_path = Path(base) / "QSync" / "config.json"
+            self._config_path = self._resolve_config_path(Path(base))
         else:
             self._config_path = Path(config_dir) / "config.json"
 
@@ -57,6 +61,14 @@ class ConfigManager:
             except Exception as exc:
                 print(f"[ConfigManager] Failed to load config: {exc}")
         return AppConfig()
+
+    @staticmethod
+    def _resolve_config_path(base: Path) -> Path:
+        new_path = base / APP_DIR_NAME / "config.json"
+        legacy_path = base / LEGACY_APP_DIR_NAME / "config.json"
+        if new_path.exists() or not legacy_path.exists():
+            return new_path
+        return legacy_path
 
     def save(self) -> None:
         with open(self._config_path, "w", encoding="utf-8") as fh:

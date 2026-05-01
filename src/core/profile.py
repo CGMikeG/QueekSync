@@ -11,6 +11,8 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from core.config import APP_DIR_NAME, LEGACY_APP_DIR_NAME
+
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -189,13 +191,21 @@ class ProfileManager:
                 base = os.environ.get("APPDATA", os.path.expanduser("~"))
             else:
                 base = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
-            self.profiles_dir = Path(base) / "QSync" / "profiles"
+            self.profiles_dir = self._resolve_profiles_dir(Path(base))
         else:
             self.profiles_dir = Path(profiles_dir)
 
         self.profiles_dir.mkdir(parents=True, exist_ok=True)
         self._profiles: Dict[str, Profile] = {}
         self._load_all()
+
+    @staticmethod
+    def _resolve_profiles_dir(base: Path) -> Path:
+        new_dir = base / APP_DIR_NAME / "profiles"
+        legacy_dir = base / LEGACY_APP_DIR_NAME / "profiles"
+        if new_dir.exists() or not legacy_dir.exists():
+            return new_dir
+        return legacy_dir
 
     # ------------------------------------------------------------------
 

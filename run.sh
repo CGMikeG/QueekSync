@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# QSync launcher for Linux / WSL
+# QueekSync launcher for Linux / WSL
 set -e
 
-LOG="$HOME/.local/share/QSync/qsync.log"
+LOG="$HOME/.local/share/QueekSync/queeksync.log"
 mkdir -p "$(dirname "$LOG")"
 
 _die() {
     echo ""
     echo "══════════════════════════════════════════"
-    echo "  QSync failed to start. Error log:"
+    echo "  QueekSync failed to start. Error log:"
     echo "  $LOG"
     echo "══════════════════════════════════════════"
     echo ""
@@ -20,6 +20,56 @@ _die() {
     exit 1
 }
 trap _die ERR
+
+_tk_hint() {
+    if command -v apt-get >/dev/null 2>&1; then
+        echo "Install it with: sudo apt-get update && sudo apt-get install -y python3-tk"
+    elif command -v dnf >/dev/null 2>&1; then
+        echo "Install it with: sudo dnf install -y python3-tkinter"
+    elif command -v pacman >/dev/null 2>&1; then
+        echo "Install it with: sudo pacman -S tk"
+    elif command -v zypper >/dev/null 2>&1; then
+        echo "Install it with: sudo zypper install python3-tk"
+    else
+        echo "Install the Tk bindings for your system Python (package often named python3-tk or python3-tkinter)."
+    fi
+}
+
+_run_privileged() {
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo "$@"
+    else
+        return 1
+    fi
+}
+
+_install_tk() {
+    echo "[QueekSync] tkinter is missing. Attempting to install the required system package..." >&2
+
+    if command -v apt-get >/dev/null 2>&1; then
+        _run_privileged apt-get update && _run_privileged apt-get install -y python3-tk
+        return
+    fi
+
+    if command -v dnf >/dev/null 2>&1; then
+        _run_privileged dnf install -y python3-tkinter
+        return
+    fi
+
+    if command -v pacman >/dev/null 2>&1; then
+        _run_privileged pacman -S --noconfirm tk
+        return
+    fi
+
+    if command -v zypper >/dev/null 2>&1; then
+        _run_privileged zypper install -y python3-tk
+        return
+    fi
+
+    return 1
+}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -35,13 +85,27 @@ VENV="$SCRIPT_DIR/.venv"
 
 # ── Create venv if it doesn't exist ─────────────────────────────────────────
 if [ ! -f "$VENV/bin/python" ]; then
-    echo "[QSync] Creating virtual environment..."
+    echo "[QueekSync] Creating virtual environment..."
     python3 -m venv "$VENV"
-    echo "[QSync] Installing dependencies..."
-    "$VENV/bin/pip" install --quiet -r requirements.txt
-    echo "[QSync] Dependencies installed."
+fi
+
+if ! "$VENV/bin/python" -c "import tkinter" >/dev/null 2>&1; then
+    echo "[QueekSync] Missing tkinter support in the selected Python installation." >&2
+    echo "[QueekSync] QueekSync uses customtkinter, which depends on the system Tk libraries." >&2
+
+    if ! _install_tk; then
+        echo "[QueekSync] Automatic installation is not available on this machine." >&2
+        echo "[QueekSync] $(_tk_hint)" >&2
+        exit 1
+    fi
+
+    if ! "$VENV/bin/python" -c "import tkinter" >/dev/null 2>&1; then
+        echo "[QueekSync] Tk package installation completed, but tkinter is still unavailable." >&2
+        echo "[QueekSync] $(_tk_hint)" >&2
+        exit 1
+    fi
 fi
 
 # ── Launch ───────────────────────────────────────────────────────────────────
-echo "[QSync] Starting... (log: $LOG)"
+echo "[QueekSync] Starting... (log: $LOG)"
 "$VENV/bin/python" main.py "$@" 2>&1 | tee "$LOG"

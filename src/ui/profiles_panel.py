@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
+from tkinter import messagebox
 
 import customtkinter as ctk
 
@@ -19,13 +20,13 @@ from ui.components import (
 )
 
 if TYPE_CHECKING:
-    from ui.app import QSyncApp
+    from ui.app import QueekSyncApp
 
 
 class ProfileRow(GlassCard):
     """Single row in the profile list."""
 
-    def __init__(self, master, profile, app: "QSyncApp", **kw) -> None:
+    def __init__(self, master, profile, app: "QueekSyncApp", **kw) -> None:
         kw.setdefault("height", 72)
         super().__init__(master, **kw)
         self.pack_propagate(False)
@@ -147,7 +148,7 @@ class ProfileRow(GlassCard):
 # ---------------------------------------------------------------------------
 
 class ProfilesPanel(ctk.CTkFrame):
-    def __init__(self, master, app: "QSyncApp", **kw) -> None:
+    def __init__(self, master, app: "QueekSyncApp", **kw) -> None:
         kw.setdefault("fg_color", "transparent")
         super().__init__(master, **kw)
         self._app = app
@@ -228,10 +229,52 @@ class ProfilesPanel(ctk.CTkFrame):
             on_save=self._on_save,
         ).focus()
 
+    @staticmethod
+    def _endpoint_kind(endpoint) -> str:
+        return "Remote" if endpoint.type == "sftp" else "Local"
+
+    def _sync_direction_label(self, profile) -> str:
+        src_kind = self._endpoint_kind(profile.source)
+        dst_kind = self._endpoint_kind(profile.destination)
+        if profile.options.mode == "two_way":
+            return f"{src_kind} <-> {dst_kind}"
+        return f"{src_kind} -> {dst_kind}"
+
     def _sync_all(self) -> None:
-        for p in self._app.profile_mgr.all():
-            if p.enabled and not self._app.is_syncing(p.id):
-                self._app.start_sync(p.id)
+        profiles_to_sync = [
+            profile
+            for profile in self._app.profile_mgr.all()
+            if profile.enabled and not self._app.is_syncing(profile.id)
+        ]
+
+        if not profiles_to_sync:
+            messagebox.showinfo(
+                "Sync All",
+                "There are no eligible profiles to sync right now.",
+                parent=self._app.root,
+            )
+            return
+
+        lines = [
+            f"- {profile.name}: {self._sync_direction_label(profile)}"
+            for profile in sorted(profiles_to_sync, key=lambda profile: profile.name.lower())
+        ]
+        prompt = (
+            "The following profiles will be synced:\n\n"
+            + "\n".join(lines)
+            + "\n\nContinue with Sync All?"
+        )
+
+        if not messagebox.askyesno(
+            "Confirm Sync All",
+            prompt,
+            parent=self._app.root,
+            icon="warning",
+        ):
+            return
+
+        for profile in profiles_to_sync:
+            self._app.start_sync(profile.id)
 
     def _on_save(self, profile) -> None:
         self._app.profile_mgr.save(profile)

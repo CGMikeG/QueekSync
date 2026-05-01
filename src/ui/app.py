@@ -20,7 +20,7 @@ from ui import theme as T
 from ui.sidebar import Sidebar
 
 
-class QSyncApp:
+class QueekSyncApp:
     """Application entry-point; owns the main CTk window and all shared state."""
 
     def __init__(self) -> None:
@@ -36,7 +36,7 @@ class QSyncApp:
 
         # ---- main window ------------------------------------------
         self.root = ctk.CTk()
-        self.root.title("QSync — File Synchronisation")
+        self.root.title("QueekSync")
         self.root.geometry(f"{cfg.window_width}x{cfg.window_height}")
         self.root.minsize(900, 600)
         self.root.configure(fg_color=T.BG_ROOT)

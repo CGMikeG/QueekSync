@@ -12,11 +12,11 @@ from ui import theme as T
 from ui.components import GlassCard, PrimaryButton, Separator
 
 if TYPE_CHECKING:
-    from ui.app import QSyncApp
+    from ui.app import QueekSyncApp
 
 
 class SettingsPanel(ctk.CTkFrame):
-    def __init__(self, master, app: "QSyncApp", **kw) -> None:
+    def __init__(self, master, app: "QueekSyncApp", **kw) -> None:
         kw.setdefault("fg_color", "transparent")
         super().__init__(master, **kw)
         self._app = app
@@ -151,7 +151,7 @@ class SettingsPanel(ctk.CTkFrame):
         ctk.CTkLabel(
             about_card,
             text=(
-                "QSync  v1.0\n"
+                "QueekSync  v1.0\n"
                 "Cross-platform file synchronisation with glass UI.\n\n"
                 "Supports local and SFTP (SSH) endpoints.\n"
                 "Built with Python · customtkinter · paramiko · watchdog"

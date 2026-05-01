@@ -14,13 +14,13 @@ from ui import theme as T
 from ui.components import GlassCard, LogViewer, PrimaryButton, Separator
 
 if TYPE_CHECKING:
-    from ui.app import QSyncApp
+    from ui.app import QueekSyncApp
 
 
 class ActiveSyncCard(GlassCard):
     """Shows live progress for one running sync job."""
 
-    def __init__(self, master, profile_id: str, profile_name: str, color: str, app: "QSyncApp", **kw) -> None:
+    def __init__(self, master, profile_id: str, profile_name: str, color: str, app: "QueekSyncApp", **kw) -> None:
         super().__init__(master, **kw)
         self._pid = profile_id
         self._app = app
@@ -110,7 +110,7 @@ class ActiveSyncCard(GlassCard):
 # ---------------------------------------------------------------------------
 
 class MonitorPanel(ctk.CTkFrame):
-    def __init__(self, master, app: "QSyncApp", **kw) -> None:
+    def __init__(self, master, app: "QueekSyncApp", **kw) -> None:
         kw.setdefault("fg_color", "transparent")
         super().__init__(master, **kw)
         self._app = app

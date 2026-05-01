@@ -13,13 +13,13 @@ from ui import theme as T
 from ui.components import GlassCard, PrimaryButton, Separator, StatTile, StatusBadge
 
 if TYPE_CHECKING:
-    from ui.app import QSyncApp
+    from ui.app import QueekSyncApp
 
 
 class ProfileCard(GlassCard):
     """Card widget showing a single profile's summary."""
 
-    def __init__(self, master, profile, app: "QSyncApp", **kw) -> None:
+    def __init__(self, master, profile, app: "QueekSyncApp", **kw) -> None:
         kw.setdefault("width", 300)
         kw.setdefault("height", 190)
         super().__init__(master, **kw)
@@ -167,7 +167,7 @@ class ProfileCard(GlassCard):
 
 
 class DashboardPanel(ctk.CTkFrame):
-    def __init__(self, master, app: "QSyncApp", **kw) -> None:
+    def __init__(self, master, app: "QueekSyncApp", **kw) -> None:
         kw.setdefault("fg_color", "transparent")
         super().__init__(master, **kw)
         self._app = app

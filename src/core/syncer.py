@@ -350,7 +350,7 @@ class SyncEngine:
         if blocking:
             self._run()
         else:
-            self._thread = threading.Thread(target=self._run, daemon=True, name="qsync-worker")
+            self._thread = threading.Thread(target=self._run, daemon=True, name="queeksync-worker")
             self._thread.start()
 
     def cancel(self) -> None:
@@ -543,7 +543,7 @@ class SyncEngine:
 
         elif isinstance(src_fs, SFTPFS) and isinstance(dst_fs, SFTPFS):
             # SFTP → SFTP via temp file
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".qsync_tmp") as tf:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".queeksync_tmp") as tf:
                 tmp = tf.name
             try:
                 src_fs.download(src_abs, tmp)

@@ -49,7 +49,7 @@ class Sidebar(ctk.CTkFrame):
 
         ctk.CTkLabel(
             logo_frame,
-            text="Q",
+            text="Queek",
             font=ctk.CTkFont(size=28, weight="bold"),
             text_color=T.ACCENT,
         ).pack(side="left")
@@ -58,7 +58,7 @@ class Sidebar(ctk.CTkFrame):
             text="Sync",
             font=ctk.CTkFont(size=22, weight="bold"),
             text_color=T.TEXT,
-        ).pack(side="left", padx=(2, 0))
+        ).pack(side="left", padx=(6, 0))
 
         ctk.CTkLabel(
             logo_frame,
