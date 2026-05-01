@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import customtkinter as ctk
 
 from ui import theme as T
-from ui.components import GlassCard, PrimaryButton, Separator
+from ui.components import GlassCard, PrimaryButton, Separator, attach_tooltip
 
 if TYPE_CHECKING:
     from ui.app import QueekSyncApp
@@ -44,13 +44,14 @@ class SettingsPanel(ctk.CTkFrame):
         app_card.grid(row=1, column=0, sticky="ew", pady=(0, T.PAD_MD))
         app_card.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(
+        theme_label = ctk.CTkLabel(
             app_card, text="Theme",
             font=ctk.CTkFont(size=12), text_color=T.TEXT_MUTED,
-        ).grid(row=0, column=0, sticky="w", padx=T.PAD_MD, pady=T.PAD_MD)
+        )
+        theme_label.grid(row=0, column=0, sticky="w", padx=T.PAD_MD, pady=T.PAD_MD)
 
         self._theme_var = ctk.StringVar(value=cfg.theme)
-        ctk.CTkSegmentedButton(
+        theme_seg = ctk.CTkSegmentedButton(
             app_card,
             values=["dark", "light", "system"],
             variable=self._theme_var,
@@ -62,7 +63,13 @@ class SettingsPanel(ctk.CTkFrame):
             text_color=T.TEXT,
             corner_radius=T.RADIUS_SM,
             command=self._apply_theme,
-        ).grid(row=0, column=1, sticky="w", padx=T.PAD_MD)
+        )
+        theme_seg.grid(row=0, column=1, sticky="w", padx=T.PAD_MD)
+        attach_tooltip(
+            theme_label,
+            theme_seg,
+            text="Choose the app appearance mode. Example: dark for low-light setups, light for bright rooms, or system to follow your operating system theme automatically."
+        )
 
         # ---- Behaviour -------------------------------------------
         self._section(scroll, "Behaviour", row=2)
@@ -80,7 +87,7 @@ class SettingsPanel(ctk.CTkFrame):
             ("_minimized_var","Start minimized"),
             ("_log_file_var", "Write logs to file"),
         ]):
-            ctk.CTkCheckBox(
+            box = ctk.CTkCheckBox(
                 beh_card,
                 text=label,
                 variable=getattr(self, attr),
@@ -88,16 +95,24 @@ class SettingsPanel(ctk.CTkFrame):
                 corner_radius=4,
                 fg_color=T.ACCENT, hover_color=T.ACCENT_HOVER,
                 text_color=T.TEXT,
-            ).grid(row=row_i, column=0, sticky="w", padx=T.PAD_MD, pady=(T.PAD_SM if row_i == 0 else T.PAD_XS, T.PAD_XS))
+            )
+            box.grid(row=row_i, column=0, sticky="w", padx=T.PAD_MD, pady=(T.PAD_SM if row_i == 0 else T.PAD_XS, T.PAD_XS))
+            tip_map = {
+                "_notif_var": "Show operating-system notifications for sync results. Example: enable this if you want a quick desktop alert when scheduled backups finish or fail.",
+                "_minimized_var": "Launch the app minimized instead of opening the full window immediately. Example: turn this on if QueekSync starts with your desktop session and you only check it occasionally.",
+                "_log_file_var": "Save runtime logs to disk for later troubleshooting. Example: enable this before testing a flaky SFTP connection so you have a log file to review.",
+            }
+            attach_tooltip(box, text=tip_map[attr])
 
         # Log level
-        ctk.CTkLabel(
+        log_level_label = ctk.CTkLabel(
             beh_card, text="Log Level",
             font=ctk.CTkFont(size=12), text_color=T.TEXT_MUTED,
-        ).grid(row=3, column=0, sticky="w", padx=T.PAD_MD, pady=(T.PAD_SM, 3))
+        )
+        log_level_label.grid(row=3, column=0, sticky="w", padx=T.PAD_MD, pady=(T.PAD_SM, 3))
 
         self._log_level_var = ctk.StringVar(value=cfg.log_level)
-        ctk.CTkComboBox(
+        log_level_combo = ctk.CTkComboBox(
             beh_card,
             values=["DEBUG", "INFO", "WARNING", "ERROR"],
             variable=self._log_level_var,
@@ -111,7 +126,13 @@ class SettingsPanel(ctk.CTkFrame):
             dropdown_text_color=T.TEXT,
             corner_radius=T.RADIUS_SM,
             width=180,
-        ).grid(row=4, column=0, sticky="w", padx=T.PAD_MD, pady=(0, T.PAD_MD))
+        )
+        log_level_combo.grid(row=4, column=0, sticky="w", padx=T.PAD_MD, pady=(0, T.PAD_MD))
+        attach_tooltip(
+            log_level_label,
+            log_level_combo,
+            text="Control how much detail QueekSync writes to its logs. Example: use DEBUG while diagnosing problems, INFO for normal use, and WARNING or ERROR to keep logs shorter."
+        )
 
         # ---- Storage -------------------------------------------------
         self._section(scroll, "Storage", row=4)
@@ -120,16 +141,17 @@ class SettingsPanel(ctk.CTkFrame):
         stor_card.grid(row=5, column=0, sticky="ew", pady=(0, T.PAD_MD))
         stor_card.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(
+        storage_label = ctk.CTkLabel(
             stor_card,
             text=f"Profiles directory:\n{self._app.profile_mgr.directory}",
             font=ctk.CTkFont(size=12),
             text_color=T.TEXT_MUTED,
             justify="left",
             anchor="w",
-        ).grid(row=0, column=0, sticky="w", padx=T.PAD_MD, pady=T.PAD_MD)
+        )
+        storage_label.grid(row=0, column=0, sticky="w", padx=T.PAD_MD, pady=T.PAD_MD)
 
-        ctk.CTkButton(
+        open_dir_btn = ctk.CTkButton(
             stor_card,
             text="Open in File Manager",
             height=30, width=180,
@@ -140,7 +162,13 @@ class SettingsPanel(ctk.CTkFrame):
             border_color=T.ACCENT,
             border_width=1,
             command=self._open_profiles_dir,
-        ).grid(row=1, column=0, sticky="w", padx=T.PAD_MD, pady=(0, T.PAD_MD))
+        )
+        open_dir_btn.grid(row=1, column=0, sticky="w", padx=T.PAD_MD, pady=(0, T.PAD_MD))
+        attach_tooltip(
+            storage_label,
+            open_dir_btn,
+            text="This is where profile configuration files are stored on disk. Example: open this folder to back up profiles manually or inspect the saved profile files."
+        )
 
         # ---- About ---------------------------------------------------
         self._section(scroll, "About", row=6)
@@ -163,9 +191,14 @@ class SettingsPanel(ctk.CTkFrame):
         ).pack(anchor="w", padx=T.PAD_MD, pady=T.PAD_MD)
 
         # ---- Save button --------------------------------------------
-        PrimaryButton(
+        save_btn = PrimaryButton(
             scroll, text="  Save Settings  ", command=self._save,
-        ).grid(row=8, column=0, sticky="w", pady=T.PAD_MD)
+        )
+        save_btn.grid(row=8, column=0, sticky="w", pady=T.PAD_MD)
+        attach_tooltip(
+            save_btn,
+            text="Apply and save these global preferences. Example: click this after changing theme, notifications, or logging behavior so the app keeps them next time it starts."
+        )
 
     # ------------------------------------------------------------------
 

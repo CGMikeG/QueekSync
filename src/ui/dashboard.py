@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Dict, List
 import customtkinter as ctk
 
 from ui import theme as T
-from ui.components import GlassCard, PrimaryButton, Separator, StatTile, StatusBadge
+from ui.components import GlassCard, PrimaryButton, Separator, StatTile, StatusBadge, attach_tooltip
 
 if TYPE_CHECKING:
     from ui.app import QueekSyncApp
@@ -21,7 +21,7 @@ class ProfileCard(GlassCard):
 
     def __init__(self, master, profile, app: "QueekSyncApp", **kw) -> None:
         kw.setdefault("width", 300)
-        kw.setdefault("height", 190)
+        kw.setdefault("height", 204)
         super().__init__(master, **kw)
         self.grid_propagate(False)
         self.pack_propagate(False)
@@ -33,6 +33,9 @@ class ProfileCard(GlassCard):
     def _build(self) -> None:
         p = self._profile
         pad = 18
+        vertical_pad = 14
+        card_width = int(self.cget("width"))
+        card_height = int(self.cget("height"))
 
         # ── Colour accent bar (left edge, fixed 4 px wide) ─────────────
         ctk.CTkFrame(
@@ -43,14 +46,19 @@ class ProfileCard(GlassCard):
         ).place(x=0, y=0, relheight=1.0)
 
         # ── Main content frame (sits to the right of accent bar) ───────
-        content = ctk.CTkFrame(self, fg_color="transparent")
-        content.place(x=pad, y=0, relwidth=1.0, relheight=1.0)
+        content = ctk.CTkFrame(
+            self,
+            fg_color="transparent",
+            width=card_width - (pad * 2),
+            height=card_height - (vertical_pad * 2),
+        )
+        content.place(x=pad, y=vertical_pad)
         content.grid_columnconfigure(0, weight=1)
         content.grid_rowconfigure(3, weight=1)  # spacer before buttons
 
         # Name + status row
         top = ctk.CTkFrame(content, fg_color="transparent")
-        top.grid(row=0, column=0, sticky="ew", pady=(14, 2), padx=(0, pad))
+        top.grid(row=0, column=0, sticky="ew", pady=(0, 2))
         top.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(
@@ -68,7 +76,7 @@ class ProfileCard(GlassCard):
         dst_label = p.destination.display_label() or "(destination not set)"
 
         paths = ctk.CTkFrame(content, fg_color="transparent")
-        paths.grid(row=1, column=0, sticky="ew", padx=(0, pad))
+        paths.grid(row=1, column=0, sticky="ew")
 
         ctk.CTkLabel(
             paths,
@@ -90,7 +98,7 @@ class ProfileCard(GlassCard):
 
         # Last sync + mode
         meta = ctk.CTkFrame(content, fg_color="transparent")
-        meta.grid(row=2, column=0, sticky="ew", pady=(4, 0), padx=(0, pad))
+        meta.grid(row=2, column=0, sticky="ew", pady=(4, 0))
 
         # Last sync
         last_sync_txt = "Never"
@@ -121,17 +129,22 @@ class ProfileCard(GlassCard):
 
         # Buttons
         btn_frame = ctk.CTkFrame(content, fg_color="transparent")
-        btn_frame.grid(row=4, column=0, sticky="ew", pady=(6, 10), padx=(0, pad))
+        btn_frame.grid(row=4, column=0, sticky="sw", pady=(10, 0))
 
-        PrimaryButton(
+        sync_btn = PrimaryButton(
             btn_frame,
             text="▶  Sync Now",
             height=30,
             font=ctk.CTkFont(size=12, weight="bold"),
             command=self._sync,
-        ).pack(side="left", padx=(0, 6))
+        )
+        sync_btn.pack(side="left", padx=(0, 6))
+        attach_tooltip(
+            sync_btn,
+            text="Start this profile immediately. Example: use this after dropping new files into the source folder and wanting the destination updated now."
+        )
 
-        ctk.CTkButton(
+        edit_btn = ctk.CTkButton(
             btn_frame,
             text="✎  Edit",
             height=30,
@@ -144,7 +157,12 @@ class ProfileCard(GlassCard):
             border_color=T.BORDER,
             border_width=1,
             command=self._edit,
-        ).pack(side="left")
+        )
+        edit_btn.pack(side="left")
+        attach_tooltip(
+            edit_btn,
+            text="Open this profile in the editor. Example: use this to change folders, credentials, filters, or schedule settings from the dashboard card."
+        )
 
     def _sync(self) -> None:
         self._app.start_sync(self._profile.id)
@@ -190,7 +208,7 @@ class DashboardPanel(ctk.CTkFrame):
         StatTile(stats_frame, "Last OK",        str(ok),    T.SUCCESS).pack(side="left")
 
         # Quick-add button
-        ctk.CTkButton(
+        new_btn = ctk.CTkButton(
             stats_frame,
             text="＋  New Profile",
             corner_radius=T.RADIUS_MD,
@@ -201,7 +219,12 @@ class DashboardPanel(ctk.CTkFrame):
             height=38,
             width=150,
             command=self._new_profile,
-        ).pack(side="right")
+        )
+        new_btn.pack(side="right")
+        attach_tooltip(
+            new_btn,
+            text="Create a new profile from the dashboard. Example: use this when you want to add another backup job without switching to the Profiles page first."
+        )
 
         Separator(self, "horizontal").grid(
             row=1, column=0, sticky="ew", padx=T.PAD_LG, pady=T.PAD_SM
@@ -229,12 +252,18 @@ class DashboardPanel(ctk.CTkFrame):
 
         # 3-column responsive grid of cards
         col_count = 3
+        card_width = 300
+        column_width = card_width + T.CARD_GAP
+
+        for col_ in range(col_count):
+            scroll.grid_columnconfigure(col_, weight=0, minsize=column_width, pad=T.CARD_GAP)
+        scroll.grid_columnconfigure(col_count, weight=1)
+
         for idx, profile in enumerate(sorted(profiles, key=lambda p: p.name)):
             row_ = idx // col_count
             col_ = idx % col_count
-            scroll.grid_columnconfigure(col_, weight=1, pad=T.CARD_GAP)
             card = ProfileCard(scroll, profile, self._app)
-            card.grid(row=row_, column=col_, padx=T.CARD_GAP // 2, pady=T.CARD_GAP // 2, sticky="nsew")
+            card.grid(row=row_, column=col_, padx=(0, T.CARD_GAP), pady=T.CARD_GAP // 2, sticky="nw")
 
     # ------------------------------------------------------------------
 

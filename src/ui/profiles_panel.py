@@ -17,6 +17,7 @@ from ui.components import (
     PrimaryButton,
     Separator,
     StatusBadge,
+    attach_tooltip,
 )
 
 if TYPE_CHECKING:
@@ -85,13 +86,13 @@ class ProfileRow(GlassCard):
         btn_frame = ctk.CTkFrame(right, fg_color="transparent")
         btn_frame.pack(side="right", padx=4, anchor="center")
 
-        for label, cmd, fg, hover in [
-            ("▶", self._sync,      T.ACCENT,    T.ACCENT_HOVER),
-            ("✎", self._edit,      T.BG_CARD,   T.BG_HOVER),
-            ("⧉", self._duplicate, T.BG_CARD,   T.BG_HOVER),
-            ("✕", self._delete,    "#450a0a",   "#7f1d1d"),
+        for label, cmd, fg, hover, tip in [
+            ("▶", self._sync,      T.ACCENT,    T.ACCENT_HOVER, "Run this profile immediately. Example: click this after updating source files and wanting a manual sync right now."),
+            ("✎", self._edit,      T.BG_CARD,   T.BG_HOVER, "Open the full editor for this profile. Example: use this to change paths, filters, schedule, or sync mode."),
+            ("⧉", self._duplicate, T.BG_CARD,   T.BG_HOVER, "Create a copy of this profile. Example: duplicate a working backup profile, then adjust only the destination."),
+            ("✕", self._delete,    "#450a0a",   "#7f1d1d", "Delete this profile permanently. Example: use this only when you no longer need the sync definition."),
         ]:
-            ctk.CTkButton(
+            btn = ctk.CTkButton(
                 btn_frame,
                 text=label,
                 width=32,
@@ -104,7 +105,9 @@ class ProfileRow(GlassCard):
                 border_width=1,
                 border_color=T.BORDER,
                 command=cmd,
-            ).pack(side="left", padx=2)
+            )
+            btn.pack(side="left", padx=2)
+            attach_tooltip(btn, text=tip)
 
     # ------------------------------------------------------------------
 
@@ -170,13 +173,18 @@ class ProfilesPanel(ctk.CTkFrame):
             text_color=T.TEXT_MUTED,
         ).pack(side="left")
 
-        PrimaryButton(
+        new_btn = PrimaryButton(
             toolbar,
             text="＋  New Profile",
             command=self._new_profile,
-        ).pack(side="right")
+        )
+        new_btn.pack(side="right")
+        attach_tooltip(
+            new_btn,
+            text="Create a new sync profile from scratch. Example: use this to set up a backup between a local folder and an SFTP server or another local drive."
+        )
 
-        ctk.CTkButton(
+        sync_all_btn = ctk.CTkButton(
             toolbar,
             text="⟳  Sync All",
             height=36,
@@ -188,7 +196,12 @@ class ProfilesPanel(ctk.CTkFrame):
             border_color=T.BORDER,
             border_width=1,
             command=self._sync_all,
-        ).pack(side="right", padx=(0, T.PAD_SM))
+        )
+        sync_all_btn.pack(side="right", padx=(0, T.PAD_SM))
+        attach_tooltip(
+            sync_all_btn,
+            text="Run every enabled profile that is not already syncing. Example: click this before leaving for the day to process all pending backups in one step."
+        )
 
         Separator(self).grid(row=1, column=0, sticky="ew", padx=T.PAD_LG)
 

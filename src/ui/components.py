@@ -12,6 +12,150 @@ import customtkinter as ctk
 from ui import theme as T
 
 
+class HoverTooltip:
+    """Lightweight hover tooltip for tkinter/customtkinter widgets."""
+
+    def __init__(self, widget, text: str, *, delay_ms: int = 350, alpha: float = 0.92) -> None:
+        self._widget = widget
+        self._text = text
+        self._delay_ms = delay_ms
+        self._alpha = alpha
+        self._after_id: Optional[str] = None
+        self._tip_window: Optional[tk.Toplevel] = None
+        self._last_pos: Tuple[int, int] = (0, 0)
+
+        for sequence in ("<Enter>", "<Leave>", "<ButtonPress>", "<Destroy>", "<Motion>"):
+            widget.bind(sequence, self._handle_event, add="+")
+
+    def _handle_event(self, event) -> None:
+        event_name = str(event.type)
+        if event_name == "7":
+            self._last_pos = (event.x_root, event.y_root)
+            self._schedule_show()
+            return
+        if event_name == "6":
+            self._last_pos = (event.x_root, event.y_root)
+            if self._tip_window is not None:
+                self._position_tip()
+            return
+        self.hide()
+
+    def _schedule_show(self) -> None:
+        self._cancel_show()
+        self._after_id = self._widget.after(self._delay_ms, self.show)
+
+    def _cancel_show(self) -> None:
+        if self._after_id is not None:
+            self._widget.after_cancel(self._after_id)
+            self._after_id = None
+
+    def show(self) -> None:
+        self._cancel_show()
+        if self._tip_window is not None or not self._widget.winfo_exists():
+            return
+
+        tip = tk.Toplevel(self._widget)
+        tip.withdraw()
+        tip.overrideredirect(True)
+        tip.configure(bg=T.BORDER_BRIGHT)
+        try:
+            tip.attributes("-alpha", self._alpha)
+        except tk.TclError:
+            pass
+
+        label = tk.Label(
+            tip,
+            text=self._text,
+            justify="left",
+            anchor="w",
+            padx=12,
+            pady=9,
+            bg=T.BG_CARD,
+            fg=T.TEXT,
+            wraplength=320,
+            font=("Segoe UI", 10),
+            relief="flat",
+        )
+        label.pack(padx=1, pady=1)
+
+        self._tip_window = tip
+        self._position_tip()
+        tip.deiconify()
+
+    def _position_tip(self) -> None:
+        if self._tip_window is None:
+            return
+        x_root, y_root = self._last_pos
+        self._tip_window.geometry(f"+{x_root + 14}+{y_root + 18}")
+
+    def hide(self) -> None:
+        self._cancel_show()
+        if self._tip_window is not None:
+            self._tip_window.destroy()
+            self._tip_window = None
+
+
+def attach_tooltip(*widgets, text: str) -> None:
+    visited = set()
+    for widget in widgets:
+        _attach_tooltip_targets(widget, text, visited)
+
+
+def _attach_tooltip_targets(widget, text: str, visited: set[int]) -> None:
+    widget_id = id(widget)
+    if widget_id in visited:
+        return
+    visited.add(widget_id)
+
+    if _try_attach_tooltip(widget, text):
+        return
+
+    for child in _tooltip_children(widget):
+        _attach_tooltip_targets(child, text, visited)
+
+
+def _try_attach_tooltip(widget, text: str) -> bool:
+    try:
+        tooltip = HoverTooltip(widget, text)
+    except (NotImplementedError, tk.TclError, AttributeError):
+        return False
+
+    existing = getattr(widget, "_hover_tooltips", None)
+    if existing is None:
+        existing = []
+        setattr(widget, "_hover_tooltips", existing)
+    existing.append(tooltip)
+    return True
+
+
+def _tooltip_children(widget) -> List[object]:
+    children = []
+
+    try:
+        children.extend(widget.winfo_children())
+    except Exception:
+        pass
+
+    buttons_dict = getattr(widget, "_buttons_dict", None)
+    if isinstance(buttons_dict, dict):
+        children.extend(buttons_dict.values())
+
+    for attr_name in ("_canvas", "_entry", "_textbox", "_text_label", "_button"):
+        child = getattr(widget, attr_name, None)
+        if child is not None:
+            children.append(child)
+
+    unique_children = []
+    seen = set()
+    for child in children:
+        child_id = id(child)
+        if child_id in seen:
+            continue
+        seen.add(child_id)
+        unique_children.append(child)
+    return unique_children
+
+
 # ---------------------------------------------------------------------------
 # Glass card frame
 # ---------------------------------------------------------------------------
@@ -160,17 +304,26 @@ class DangerButton(ctk.CTkButton):
 class LabelledEntry(ctk.CTkFrame):
     """A label + CTkEntry stacked vertically."""
 
-    def __init__(self, master, label: str, placeholder: str = "", show: str = "", **kw) -> None:
+    def __init__(
+        self,
+        master,
+        label: str,
+        placeholder: str = "",
+        show: str = "",
+        tooltip_text: str = "",
+        **kw,
+    ) -> None:
         kw.setdefault("fg_color", "transparent")
         super().__init__(master, **kw)
 
-        ctk.CTkLabel(
+        self.label = ctk.CTkLabel(
             self,
             text=label,
             font=ctk.CTkFont(size=12),
             text_color=T.TEXT_MUTED,
             anchor="w",
-        ).pack(fill="x", padx=2, pady=(0, 3))
+        )
+        self.label.pack(fill="x", padx=2, pady=(0, 3))
 
         self.entry = ctk.CTkEntry(
             self,
@@ -183,6 +336,9 @@ class LabelledEntry(ctk.CTkFrame):
             show=show,
         )
         self.entry.pack(fill="x")
+
+        if tooltip_text:
+            attach_tooltip(self, self.label, self.entry, text=tooltip_text)
 
     def get(self) -> str:
         return self.entry.get()

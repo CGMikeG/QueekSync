@@ -9,7 +9,7 @@ from typing import Callable, Dict, List, Tuple
 import customtkinter as ctk
 
 from ui import theme as T
-from ui.components import Separator
+from ui.components import Separator, attach_tooltip
 
 
 NAV_ITEMS: List[Tuple[str, str, str]] = [
@@ -88,6 +88,10 @@ class Sidebar(ctk.CTkFrame):
                 command=lambda p=page_id: self._click(p),
             )
             btn.pack(fill="x", pady=2)
+            attach_tooltip(
+                btn,
+                text=f"Open {label.replace('⬡', '').replace('☰', '').replace('◉', '').replace('⚙', '').strip()}. Example: {_tip}."
+            )
             self._nav_btns[page_id] = btn
 
         # Bottom section

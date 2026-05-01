@@ -12,7 +12,7 @@ import customtkinter as ctk
 
 from core.profile import FilterConfig, Profile, PROFILE_COLOURS, ScheduleConfig
 from ui import theme as T
-from ui.components import ColourPicker, GlassCard, LabelledEntry, PrimaryButton, Separator
+from ui.components import ColourPicker, GlassCard, LabelledEntry, PrimaryButton, Separator, attach_tooltip
 
 
 class ProfileEditorDialog(ctk.CTkToplevel):
@@ -84,7 +84,7 @@ class ProfileEditorDialog(ctk.CTkToplevel):
         btn_bar = ctk.CTkFrame(self, fg_color="transparent")
         btn_bar.grid(row=1, column=0, sticky="ew", padx=T.PAD_LG, pady=T.PAD_MD)
 
-        ctk.CTkButton(
+        cancel_btn = ctk.CTkButton(
             btn_bar,
             text="Cancel",
             height=36,
@@ -95,9 +95,19 @@ class ProfileEditorDialog(ctk.CTkToplevel):
             border_color=T.BORDER,
             border_width=1,
             command=self.destroy,
-        ).pack(side="right", padx=(T.PAD_SM, 0))
+        )
+        cancel_btn.pack(side="right", padx=(T.PAD_SM, 0))
+        attach_tooltip(
+            cancel_btn,
+            text="Close this editor without saving changes. Example: use this if you only wanted to review the current profile values."
+        )
 
-        PrimaryButton(btn_bar, text="  Save Profile  ", command=self._save).pack(side="right")
+        save_btn = PrimaryButton(btn_bar, text="  Save Profile  ", command=self._save)
+        save_btn.pack(side="right")
+        attach_tooltip(
+            save_btn,
+            text="Save every tab in this profile. Example: after setting the source, destination, and schedule, click here to keep the profile for later runs."
+        )
 
     # ==================================================================
     # Modal helper
@@ -123,15 +133,21 @@ class ProfileEditorDialog(ctk.CTkToplevel):
         frm.grid_columnconfigure(0, weight=1)
 
         # Name
-        self._name_entry = LabelledEntry(frm, "Profile Name", placeholder="e.g. Home Backup")
+        self._name_entry = LabelledEntry(
+            frm,
+            "Profile Name",
+            placeholder="e.g. Home Backup",
+            tooltip_text="Give this sync job a clear name. Example: Home Backup, NAS Mirror, or Client Archive. This name appears in the profile list and dashboard."
+        )
         self._name_entry.set(self._working.name)
         self._name_entry.pack(fill="x", pady=(T.PAD_MD, T.PAD_SM))
 
         # Description
-        ctk.CTkLabel(
+        desc_label = ctk.CTkLabel(
             frm, text="Description", font=ctk.CTkFont(size=12),
             text_color=T.TEXT_MUTED, anchor="w",
-        ).pack(fill="x", padx=2, pady=(T.PAD_SM, 3))
+        )
+        desc_label.pack(fill="x", padx=2, pady=(T.PAD_SM, 3))
         self._desc_box = ctk.CTkTextbox(
             frm, height=60,
             fg_color=T.BG_INPUT, border_color=T.BORDER, border_width=1,
@@ -139,18 +155,29 @@ class ProfileEditorDialog(ctk.CTkToplevel):
         )
         self._desc_box.pack(fill="x")
         self._desc_box.insert("1.0", self._working.description)
+        attach_tooltip(
+            desc_label,
+            self._desc_box,
+            text="Add a short note about what this profile does. Example: Sync laptop photos to the office NAS every night. This helps distinguish similar profiles later."
+        )
 
         # Colour
-        ctk.CTkLabel(
+        colour_label = ctk.CTkLabel(
             frm, text="Accent Colour", font=ctk.CTkFont(size=12),
             text_color=T.TEXT_MUTED, anchor="w",
-        ).pack(fill="x", padx=2, pady=(T.PAD_MD, 6))
+        )
+        colour_label.pack(fill="x", padx=2, pady=(T.PAD_MD, 6))
         self._colour_picker = ColourPicker(frm, on_select=self._on_colour, selected=self._working.color)
         self._colour_picker.pack(anchor="w")
+        attach_tooltip(
+            colour_label,
+            self._colour_picker,
+            text="Pick the profile accent shown in the UI. Example: use blue for backups and green for mirrors so profiles are easier to spot at a glance."
+        )
 
         # Enabled toggle
         self._enabled_var = ctk.BooleanVar(value=self._working.enabled)
-        ctk.CTkCheckBox(
+        enabled_box = ctk.CTkCheckBox(
             frm,
             text="Profile enabled",
             variable=self._enabled_var,
@@ -158,7 +185,12 @@ class ProfileEditorDialog(ctk.CTkToplevel):
             corner_radius=4,
             fg_color=T.ACCENT, hover_color=T.ACCENT_HOVER,
             text_color=T.TEXT,
-        ).pack(anchor="w", pady=T.PAD_MD)
+        )
+        enabled_box.pack(anchor="w", pady=T.PAD_MD)
+        attach_tooltip(
+            enabled_box,
+            text="Turn this profile on or off without deleting it. Example: disable a travel backup profile until the external drive is connected again."
+        )
 
     def _on_colour(self, colour: str) -> None:
         self._working.color = colour
@@ -175,10 +207,11 @@ class ProfileEditorDialog(ctk.CTkToplevel):
         frm.grid_columnconfigure((0, 1), weight=1)
 
         # Type selector
-        ctk.CTkLabel(
+        type_label = ctk.CTkLabel(
             frm, text="Connection Type", font=ctk.CTkFont(size=12),
             text_color=T.TEXT_MUTED, anchor="w",
-        ).grid(row=0, column=0, columnspan=2, sticky="w", padx=2, pady=(T.PAD_MD, 3))
+        )
+        type_label.grid(row=0, column=0, columnspan=2, sticky="w", padx=2, pady=(T.PAD_MD, 3))
 
         type_var = ctk.StringVar(value=cfg.type)
 
@@ -195,6 +228,12 @@ class ProfileEditorDialog(ctk.CTkToplevel):
             corner_radius=T.RADIUS_SM,
         )
         type_seg.grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, T.PAD_SM))
+        endpoint_name = "source" if is_source else "destination"
+        attach_tooltip(
+            type_label,
+            type_seg,
+            text=f"Choose where the {endpoint_name} lives. Example: pick local for a folder on this computer, or sftp for a server like backup.example.com over SSH."
+        )
 
         # Local path row
         local_frame = ctk.CTkFrame(frm, fg_color="transparent")
@@ -202,41 +241,80 @@ class ProfileEditorDialog(ctk.CTkToplevel):
         local_frame.grid_columnconfigure(0, weight=1)
 
         if is_source:
-            path_entry_holder = LabelledEntry(local_frame, "Local Path", placeholder="/path/to/source")
+            path_entry_holder = LabelledEntry(
+                local_frame,
+                "Local Path",
+                placeholder="/path/to/source",
+                tooltip_text="Enter the folder path on this computer. Example: /home/mike/Documents or /mnt/backup/photos. This is the local directory QueekSync reads from or writes to."
+            )
         else:
-            path_entry_holder = LabelledEntry(local_frame, "Local Path", placeholder="/path/to/destination")
+            path_entry_holder = LabelledEntry(
+                local_frame,
+                "Local Path",
+                placeholder="/path/to/destination",
+                tooltip_text="Enter the folder path on this computer. Example: /home/mike/Backups or /media/usb/Archive. This is the local directory QueekSync reads from or writes to."
+            )
         path_entry_holder.set(cfg.path if cfg.type == "local" else "")
         path_entry_holder.grid(row=0, column=0, sticky="ew")
 
-        ctk.CTkButton(
+        browse_btn = ctk.CTkButton(
             local_frame, text="Browse…", width=90, height=30,
             corner_radius=T.RADIUS_SM, fg_color=T.BG_HOVER,
             hover_color=T.BORDER_BRIGHT, text_color=T.TEXT,
             command=lambda: self._browse(path_entry_holder),
-        ).grid(row=0, column=1, sticky="s", padx=(T.PAD_SM, 0))
+        )
+        browse_btn.grid(row=0, column=1, sticky="s", padx=(T.PAD_SM, 0))
+        attach_tooltip(
+            browse_btn,
+            text="Open a folder picker for the local path field. Example: use this to avoid mistyping home folders or mounted drive paths."
+        )
 
         # SFTP fields
         sftp_frame = ctk.CTkFrame(frm, fg_color="transparent")
         sftp_frame.grid(row=3, column=0, columnspan=2, sticky="ew")
         sftp_frame.grid_columnconfigure((0, 1), weight=1)
 
-        host_entry = LabelledEntry(sftp_frame, "Host", placeholder="192.168.1.100 or hostname")
+        host_entry = LabelledEntry(
+            sftp_frame,
+            "Host",
+            placeholder="192.168.1.100 or hostname",
+            tooltip_text="Enter the server address for this SFTP endpoint. Example: 192.168.1.100, nas.local, or files.example.com. QueekSync connects to this host over SSH. If QueekSync is running inside WSL and the target is on Windows, use the Windows host IP instead of the WSL IP address."
+        )
         host_entry.set(cfg.host)
         host_entry.grid(row=0, column=0, sticky="ew", padx=(0, T.PAD_SM), pady=T.PAD_XS)
 
-        port_entry = LabelledEntry(sftp_frame, "Port", placeholder="22")
+        port_entry = LabelledEntry(
+            sftp_frame,
+            "Port",
+            placeholder="22",
+            tooltip_text="Set the SSH port used by the server. Example: 22 for standard SSH or 2222 if your server uses a custom port."
+        )
         port_entry.set(str(cfg.port))
         port_entry.grid(row=0, column=1, sticky="ew", pady=T.PAD_XS)
 
-        user_entry = LabelledEntry(sftp_frame, "Username")
+        user_entry = LabelledEntry(
+            sftp_frame,
+            "Username",
+            tooltip_text="Enter the SSH account name used to sign in. Example: mike, backupbot, or deploy."
+        )
         user_entry.set(cfg.username)
         user_entry.grid(row=1, column=0, sticky="ew", padx=(0, T.PAD_SM), pady=T.PAD_XS)
 
-        pass_entry = LabelledEntry(sftp_frame, "Password", show="●")
+        pass_entry = LabelledEntry(
+            sftp_frame,
+            "Password",
+            show="●",
+            tooltip_text="Enter the SSH password if the server allows password login. Leave this blank when you use an SSH key instead."
+        )
         pass_entry.set(cfg.password)
         pass_entry.grid(row=1, column=1, sticky="ew", pady=T.PAD_XS)
 
-        key_entry = LabelledEntry(sftp_frame, "SSH Key File (optional)", placeholder="~/.ssh/id_rsa")
+        key_entry = LabelledEntry(
+            sftp_frame,
+            "SSH Key File (optional)",
+            placeholder="~/.ssh/id_rsa",
+            tooltip_text="Optional path to a private SSH key file. Example: ~/.ssh/id_rsa or /home/mike/.ssh/backup_ed25519. Use this when the server authenticates with keys."
+        )
         key_entry.set(cfg.key_file)
         key_entry.grid(row=2, column=0, columnspan=2, sticky="ew", pady=T.PAD_XS)
 
@@ -245,18 +323,28 @@ class ProfileEditorDialog(ctk.CTkToplevel):
         sftp_path_row.grid(row=3, column=0, columnspan=2, sticky="ew", pady=T.PAD_XS)
         sftp_path_row.grid_columnconfigure(0, weight=1)
 
-        sftp_path_entry = LabelledEntry(sftp_path_row, "Remote Path", placeholder="/home/user/data")
+        sftp_path_entry = LabelledEntry(
+            sftp_path_row,
+            "Remote Path",
+            placeholder="/home/user/data",
+            tooltip_text="Remote folder path on the server. Example: /home/backup/photos or /srv/archive/client-a. This is the directory QueekSync will sync over SFTP."
+        )
         sftp_path_entry.set(cfg.path if cfg.type == "sftp" else "")
         sftp_path_entry.grid(row=0, column=0, sticky="ew")
 
-        ctk.CTkButton(
+        remote_browse_btn = ctk.CTkButton(
             sftp_path_row, text="📁  Browse…", width=110, height=30,
             corner_radius=T.RADIUS_SM, fg_color=T.BG_HOVER,
             hover_color=T.BORDER_BRIGHT, text_color=T.TEXT,
             command=lambda: self._browse_remote(
                 host_entry, port_entry, user_entry, pass_entry, key_entry, sftp_path_entry
             ),
-        ).grid(row=0, column=1, sticky="s", padx=(T.PAD_SM, 0))
+        )
+        remote_browse_btn.grid(row=0, column=1, sticky="s", padx=(T.PAD_SM, 0))
+        attach_tooltip(
+            remote_browse_btn,
+            text="Browse folders on the remote server after you fill in the connection details. Example: connect, inspect /home or /srv, then pick the exact remote folder instead of typing it manually."
+        )
 
         # Test connection button
         test_label = ctk.CTkLabel(sftp_frame, text="", font=ctk.CTkFont(size=11), text_color=T.TEXT_MUTED)
@@ -270,6 +358,10 @@ class ProfileEditorDialog(ctk.CTkToplevel):
             command=lambda lbl=test_label: self._test_sftp(host_entry, port_entry, user_entry, pass_entry, key_entry, lbl),
         )
         test_btn.grid(row=4, column=0, sticky="w", pady=T.PAD_SM)
+        attach_tooltip(
+            test_btn,
+            text="Check that the host, port, username, password, and key settings work. Example: click this before saving to catch a wrong hostname or SSH key path early."
+        )
 
         # Show/hide frames based on type
         def _update_type(*_):
@@ -385,10 +477,11 @@ class ProfileEditorDialog(ctk.CTkToplevel):
         opts = self._working.options
 
         # Sync mode
-        ctk.CTkLabel(
+        mode_label = ctk.CTkLabel(
             frm, text="Sync Mode", font=ctk.CTkFont(size=12),
             text_color=T.TEXT_MUTED, anchor="w",
-        ).pack(fill="x", padx=2, pady=(T.PAD_MD, 4))
+        )
+        mode_label.pack(fill="x", padx=2, pady=(T.PAD_MD, 4))
 
         self._mode_var = ctk.StringVar(value=opts.mode)
         mode_frame = ctk.CTkFrame(frm, fg_color="transparent")
@@ -402,13 +495,22 @@ class ProfileEditorDialog(ctk.CTkToplevel):
         for val, lbl, tip in modes:
             row = ctk.CTkFrame(mode_frame, fg_color="transparent")
             row.pack(fill="x", pady=2)
-            ctk.CTkRadioButton(
+            mode_btn = ctk.CTkRadioButton(
                 row, text=lbl, value=val, variable=self._mode_var,
                 fg_color=T.ACCENT, hover_color=T.ACCENT_HOVER, text_color=T.TEXT,
-            ).pack(side="left")
+            )
+            mode_btn.pack(side="left")
             ctk.CTkLabel(
                 row, text=tip, font=ctk.CTkFont(size=11), text_color=T.TEXT_DIM,
             ).pack(side="left", padx=T.PAD_SM)
+            attach_tooltip(
+                mode_btn,
+                text=f"{tip}. Example: choose {lbl.replace('  ', ' ').strip()} when that matches how you want files copied and deleted."
+            )
+        attach_tooltip(
+            mode_label,
+            text="Choose how file changes should flow between source and destination. Example: use One-way for backups, Mirror for exact replicas, and Two-way when both sides can change."
+        )
 
         Separator(frm).pack(fill="x", pady=T.PAD_MD)
 
@@ -422,21 +524,30 @@ class ProfileEditorDialog(ctk.CTkToplevel):
         for attr, label, default in bool_opts:
             var = ctk.BooleanVar(value=default)
             setattr(self, attr, var)
-            ctk.CTkCheckBox(
+            box = ctk.CTkCheckBox(
                 frm, text=label, variable=var,
                 checkbox_height=18, checkbox_width=18, corner_radius=4,
                 fg_color=T.ACCENT, hover_color=T.ACCENT_HOVER, text_color=T.TEXT,
-            ).pack(anchor="w", pady=3)
+            )
+            box.pack(anchor="w", pady=3)
+            tip_text = {
+                "_opt_delete": "Remove files from the destination when they no longer exist in the source. Example: enable this for a true mirror backup, but leave it off for archives where old files must stay.",
+                "_opt_ts": "Keep original modification times after copying. Example: enable this when photo dates or build timestamps matter.",
+                "_opt_symlinks": "Follow symbolic links and sync the files they point to. Example: turn this on only if your source folder contains useful linked directories.",
+                "_opt_checksum": "Compare file contents using checksums instead of faster metadata checks. Example: use this for critical backups when you want higher confidence and can accept slower runs.",
+            }
+            attach_tooltip(box, text=tip_text[attr])
 
         Separator(frm).pack(fill="x", pady=T.PAD_MD)
 
         # Bandwidth limit
         bw_frame = ctk.CTkFrame(frm, fg_color="transparent")
         bw_frame.pack(fill="x")
-        ctk.CTkLabel(
+        bw_label = ctk.CTkLabel(
             bw_frame, text="Bandwidth limit (KB/s, 0 = unlimited):",
             font=ctk.CTkFont(size=12), text_color=T.TEXT_MUTED,
-        ).pack(side="left")
+        )
+        bw_label.pack(side="left")
         self._bw_entry = ctk.CTkEntry(
             bw_frame, width=80,
             fg_color=T.BG_INPUT, border_color=T.BORDER, text_color=T.TEXT,
@@ -444,6 +555,11 @@ class ProfileEditorDialog(ctk.CTkToplevel):
         )
         self._bw_entry.insert(0, str(opts.bandwidth_limit_kbps))
         self._bw_entry.pack(side="left", padx=T.PAD_SM)
+        attach_tooltip(
+            bw_label,
+            self._bw_entry,
+            text="Limit transfer speed in kilobytes per second. Example: enter 2048 to cap sync traffic at about 2 MB/s, or 0 to let QueekSync use full available bandwidth."
+        )
 
     # ==================================================================
     # Tab: Schedule
@@ -457,21 +573,27 @@ class ProfileEditorDialog(ctk.CTkToplevel):
 
         self._sched_enabled = ctk.BooleanVar(value=sched.enabled)
 
-        ctk.CTkCheckBox(
+        sched_box = ctk.CTkCheckBox(
             frm,
             text="Enable automatic sync on schedule",
             variable=self._sched_enabled,
             checkbox_height=20, checkbox_width=20, corner_radius=4,
             fg_color=T.ACCENT, hover_color=T.ACCENT_HOVER, text_color=T.TEXT,
             font=ctk.CTkFont(size=13),
-        ).pack(anchor="w", pady=(T.PAD_MD, T.PAD_LG))
+        )
+        sched_box.pack(anchor="w", pady=(T.PAD_MD, T.PAD_LG))
+        attach_tooltip(
+            sched_box,
+            text="Run this profile automatically instead of only manual syncs. Example: enable this for hourly document backups or nightly server mirrors."
+        )
 
         Separator(frm).pack(fill="x", pady=T.PAD_SM)
 
-        ctk.CTkLabel(
+        interval_title = ctk.CTkLabel(
             frm, text="Run every (minutes):",
             font=ctk.CTkFont(size=12), text_color=T.TEXT_MUTED,
-        ).pack(anchor="w", pady=(T.PAD_MD, 4))
+        )
+        interval_title.pack(anchor="w", pady=(T.PAD_MD, 4))
 
         self._interval_slider = ctk.CTkSlider(
             frm, from_=1, to=1440, number_of_steps=143,
@@ -481,6 +603,11 @@ class ProfileEditorDialog(ctk.CTkToplevel):
         )
         self._interval_slider.set(sched.interval_minutes)
         self._interval_slider.pack(fill="x", pady=(0, T.PAD_XS))
+        attach_tooltip(
+            interval_title,
+            self._interval_slider,
+            text="Set how often the scheduled sync should run. Example: 15 minutes for active work folders, 60 minutes for general backups, or 1440 for once per day."
+        )
 
         self._interval_label = ctk.CTkLabel(
             frm,
@@ -518,11 +645,12 @@ class ProfileEditorDialog(ctk.CTkToplevel):
 
         flt = self._working.filters
 
-        def _make_pattern_box(label: str, default: List[str], row: int) -> ctk.CTkTextbox:
-            ctk.CTkLabel(
+        def _make_pattern_box(label: str, default: List[str], row: int):
+            title = ctk.CTkLabel(
                 frm, text=label, font=ctk.CTkFont(size=12, weight="bold"),
                 text_color=T.TEXT_MUTED, anchor="w",
-            ).grid(row=row * 2, column=row % 2, sticky="w", padx=T.PAD_SM, pady=(T.PAD_MD, 3))
+            )
+            title.grid(row=row * 2, column=row % 2, sticky="w", padx=T.PAD_SM, pady=(T.PAD_MD, 3))
             box = ctk.CTkTextbox(
                 frm, height=130,
                 fg_color=T.BG_INPUT, border_color=T.BORDER, border_width=1,
@@ -531,16 +659,31 @@ class ProfileEditorDialog(ctk.CTkToplevel):
             )
             box.grid(row=row * 2 + 1, column=row % 2, sticky="nsew", padx=T.PAD_SM, pady=(0, T.PAD_SM))
             box.insert("1.0", "\n".join(default))
-            return box
+            return title, box
 
-        self._include_box = _make_pattern_box("Include Patterns (fnmatch)", flt.include_patterns, 0)
-        self._exclude_box = _make_pattern_box("Exclude Patterns (fnmatch)", flt.exclude_patterns, 1)
+        include_label, self._include_box = _make_pattern_box("Include Patterns (fnmatch)", flt.include_patterns, 0)
+        exclude_label, self._exclude_box = _make_pattern_box("Exclude Patterns (fnmatch)", flt.exclude_patterns, 1)
+        attach_tooltip(
+            include_label,
+            self._include_box,
+            text="Only files matching these patterns will be synced. Example: add *.docx and *.xlsx to back up office files only. Leave this empty to include everything unless excluded."
+        )
+        attach_tooltip(
+            exclude_label,
+            self._exclude_box,
+            text="Files matching these patterns will be skipped. Example: add .git, node_modules/**, or *.tmp to avoid syncing temporary or generated files."
+        )
 
-        ctk.CTkLabel(
+        filter_hint = ctk.CTkLabel(
             frm,
             text="One pattern per line. Examples:  *.txt   docs/**   .git",
             font=ctk.CTkFont(size=11), text_color=T.TEXT_DIM,
-        ).grid(row=4, column=0, columnspan=2, sticky="w", padx=T.PAD_SM)
+        )
+        filter_hint.grid(row=4, column=0, columnspan=2, sticky="w", padx=T.PAD_SM)
+        attach_tooltip(
+            filter_hint,
+            text="Patterns use fnmatch-style matching. Examples: *.jpg matches image files, docs/** targets everything under docs, and .git excludes Git metadata folders."
+        )
 
     # ==================================================================
     # Save
