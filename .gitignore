@@ -29,3 +29,10 @@ Thumbs.db
 # Local environment files
 .env
 .env.*
+
+# QueekSync local app data and profile exports
+QueekSync/
+QSync/
+profiles/
+config.json
+*.profile.json
