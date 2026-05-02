@@ -123,9 +123,13 @@ class ProfileRow(GlassCard):
         ).focus()
 
     def _duplicate(self) -> None:
-        self._app.profile_mgr.duplicate(self._profile.id)
-        self._app.refresh_panel("profiles")
-        self._app.refresh_panel("dashboard")
+        """Duplicate the current profile and refresh the UI."""
+        try:
+            self._app.profile_mgr.duplicate_profile(self._profile.id)
+            self._app.refresh_panel("profiles")
+            self._app.refresh_panel("dashboard")
+        except ValueError as e:
+            messagebox.showerror("Error", str(e))
 
     def _delete(self) -> None:
         from tkinter import messagebox

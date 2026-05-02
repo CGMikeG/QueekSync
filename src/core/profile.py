@@ -246,6 +246,16 @@ class ProfileManager:
         self.save(copy)
         return copy
 
+    def duplicate_profile(self, profile_id: str) -> Profile:
+        """Duplicate a profile by its ID."""
+        if profile_id not in self._profiles:
+            raise ValueError(f"Profile with ID {profile_id} does not exist.")
+
+        original_profile = self._profiles[profile_id]
+        duplicated_profile = original_profile.duplicate()
+        self.save(duplicated_profile)
+        return duplicated_profile
+
     @property
     def directory(self) -> str:
         return str(self.profiles_dir)
