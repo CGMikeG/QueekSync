@@ -18,6 +18,7 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import os
+import stat
 import shutil
 import tempfile
 import threading
@@ -183,11 +184,43 @@ class LocalFS:
             os.utime(dst, (st.st_atime, st.st_mtime))
 
     @staticmethod
+    def _force_remove(func, path, exc_info) -> None:
+        """onerror handler for shutil.rmtree.
+
+        When a delete fails, try clearing the read-only bit on the offending
+        path and retry the operation. This handles files left read-only by
+        Windows NTFS/Samba shares, Git objects, or other tools — no sudo
+        required as long as the current user owns the file.
+        """
+        try:
+            os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+            func(path)
+        except Exception:
+            pass  # still can't delete; surface nothing here, caller tracks the error
+
+    @staticmethod
     def delete(path: str) -> None:
         if os.path.isdir(path):
-            shutil.rmtree(path, ignore_errors=True)
+            shutil.rmtree(path, onerror=LocalFS._force_remove)
+            # rmtree with onerror swallows individual failures; verify the dir is gone
+            if os.path.exists(path):
+                raise PermissionError(
+                    f"Could not fully remove directory '{path}'. "
+                    "Some files may be locked by another process or owned by a different user."
+                )
         else:
-            os.remove(path)
+            try:
+                os.remove(path)
+            except PermissionError:
+                # Try clearing read-only bit and retry once
+                try:
+                    os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+                    os.remove(path)
+                except Exception as inner:
+                    raise PermissionError(
+                        f"Cannot delete '{path}': {inner}. "
+                        "The file may be locked by another process or owned by a different user."
+                    ) from inner
 
     @staticmethod
     def makedirs(path: str) -> None:
@@ -299,8 +332,17 @@ class SFTPFS:
         preserve_timestamps: bool = True,
         progress_cb: Optional[Callable[[int, int], None]] = None,
     ) -> None:
-        os.makedirs(os.path.dirname(local), exist_ok=True)
+        local_dir = os.path.dirname(local)
+        if local_dir:
+            os.makedirs(local_dir, exist_ok=True)
         self._sftp.get(remote, local, callback=progress_cb)
+        if preserve_timestamps:
+            try:
+                attr = self._sftp.stat(remote)
+                if attr.st_mtime:
+                    os.utime(local, (attr.st_atime or attr.st_mtime, attr.st_mtime))
+            except Exception:
+                pass  # non-fatal: timestamp preservation is best-effort
 
     def delete(self, path: str, is_dir: bool = False) -> None:
         if is_dir:
@@ -344,7 +386,7 @@ class SyncEngine:
 
     # ------------------------------------------------------------------
     def start(self, blocking: bool = False) -> None:
-        if self.status == SyncStatus.SYNCING:
+        if self.status in (SyncStatus.SCANNING, SyncStatus.SYNCING):
             return
         self._cancel = False
         if blocking:

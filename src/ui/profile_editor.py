@@ -443,6 +443,14 @@ class ProfileEditorDialog(ctk.CTkToplevel):
     def _test_sftp(self, host, port, user, pw, key, label) -> None:
         import threading
 
+        # Read all widget values in the UI thread before spawning the worker.
+        # Tkinter widgets must never be accessed from a background thread.
+        host_val = host.get().strip()
+        port_val = int(port.get() or 22)
+        user_val = user.get().strip()
+        pw_val = pw.get()
+        key_val = key.get().strip()
+
         label.configure(text="Connecting…", text_color=T.TEXT_MUTED)
 
         def _try():
@@ -451,11 +459,11 @@ class ProfileEditorDialog(ctk.CTkToplevel):
                 c = paramiko.SSHClient()
                 c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
                 c.connect(
-                    hostname=host.get(),
-                    port=int(port.get() or 22),
-                    username=user.get(),
-                    password=pw.get() or None,
-                    key_filename=os.path.expanduser(key.get()) if key.get() else None,
+                    hostname=host_val,
+                    port=port_val,
+                    username=user_val,
+                    password=pw_val or None,
+                    key_filename=os.path.expanduser(key_val) if key_val else None,
                     timeout=8,
                 )
                 c.close()

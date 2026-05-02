@@ -193,6 +193,19 @@ class MonitorPanel(ctk.CTkFrame):
         pname = profile.name if profile else pid[:8]
         color = profile.color if profile else T.ACCENT
 
+        # If there is already a card for this profile in a terminal state
+        # (done/cancelled/error) and a new sync event arrives that is not
+        # itself terminal, the old card belongs to a previous run — discard
+        # it so a fresh card is created for the new run.
+        existing = self._active_cards.get(pid)
+        if (
+            existing is not None
+            and getattr(existing, "_done", False)
+            and event.kind not in ("success", "error", "warning")
+        ):
+            existing.destroy()
+            del self._active_cards[pid]
+
         # Ensure card exists for this profile
         if pid not in self._active_cards:
             if hasattr(self, "_no_active_lbl") and self._no_active_lbl.winfo_exists():
@@ -214,8 +227,8 @@ class MonitorPanel(ctk.CTkFrame):
         if len(self._log_entries) > 2000:
             self._log_entries = self._log_entries[-1000:]
 
-        # Remove card after short delay when done
-        if event.kind in ("success", "error"):
+        # Remove card after short delay when done (all terminal kinds)
+        if event.kind in ("success", "error", "warning"):
             self.after(8000, lambda p=pid: self._remove_card(p))
 
     def _remove_card(self, profile_id: str) -> None:

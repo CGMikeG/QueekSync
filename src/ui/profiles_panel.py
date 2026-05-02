@@ -5,8 +5,8 @@ Profiles panel – list view with CRUD operations.
 from __future__ import annotations
 
 from datetime import datetime
+from tkinter import filedialog, messagebox
 from typing import TYPE_CHECKING, Optional
-from tkinter import messagebox
 
 import customtkinter as ctk
 
@@ -207,6 +207,44 @@ class ProfilesPanel(ctk.CTkFrame):
             text="Run every enabled profile that is not already syncing. Example: click this before leaving for the day to process all pending backups in one step."
         )
 
+        import_btn = ctk.CTkButton(
+            toolbar,
+            text="⬆  Import",
+            height=36,
+            corner_radius=T.RADIUS_MD,
+            font=ctk.CTkFont(size=13),
+            fg_color="transparent",
+            hover_color=T.BG_HOVER,
+            text_color=T.TEXT_MUTED,
+            border_color=T.BORDER,
+            border_width=1,
+            command=self._import_profiles,
+        )
+        import_btn.pack(side="right", padx=(0, T.PAD_SM))
+        attach_tooltip(
+            import_btn,
+            text="Load profiles from a previously exported .json file. Profiles with duplicate IDs will be skipped unless you choose to overwrite them.",
+        )
+
+        export_btn = ctk.CTkButton(
+            toolbar,
+            text="⬇  Export",
+            height=36,
+            corner_radius=T.RADIUS_MD,
+            font=ctk.CTkFont(size=13),
+            fg_color="transparent",
+            hover_color=T.BG_HOVER,
+            text_color=T.TEXT_MUTED,
+            border_color=T.BORDER,
+            border_width=1,
+            command=self._export_profiles,
+        )
+        export_btn.pack(side="right", padx=(0, T.PAD_SM))
+        attach_tooltip(
+            export_btn,
+            text="Save all profiles to a single .json file. Use this to back up your configuration or move profiles to another machine.",
+        )
+
         Separator(self).grid(row=1, column=0, sticky="ew", padx=T.PAD_LG)
 
         # Scrollable list
@@ -299,3 +337,71 @@ class ProfilesPanel(ctk.CTkFrame):
         self._app._watcher_mgr.update(profile)
         self._app.refresh_panel("profiles")
         self._app.refresh_panel("dashboard")
+
+    # ------------------------------------------------------------------
+    # Export / Import
+    # ------------------------------------------------------------------
+
+    def _export_profiles(self) -> None:
+        profiles = self._app.profile_mgr.all()
+        if not profiles:
+            messagebox.showinfo(
+                "Export Profiles",
+                "There are no profiles to export.",
+                parent=self._app.root,
+            )
+            return
+
+        filepath = filedialog.asksaveasfilename(
+            parent=self._app.root,
+            title="Export profiles to…",
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            initialfile="queeksync_profiles.json",
+        )
+        if not filepath:
+            return
+
+        try:
+            count = self._app.profile_mgr.export_profiles(filepath)
+            messagebox.showinfo(
+                "Export Successful",
+                f"Exported {count} profile(s) to:\n{filepath}",
+                parent=self._app.root,
+            )
+        except Exception as exc:
+            messagebox.showerror("Export Failed", str(exc), parent=self._app.root)
+
+    def _import_profiles(self) -> None:
+        filepath = filedialog.askopenfilename(
+            parent=self._app.root,
+            title="Import profiles from…",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+        )
+        if not filepath:
+            return
+
+        overwrite = messagebox.askyesno(
+            "Import Profiles",
+            "Overwrite existing profiles that share the same ID?\n\n"
+            "• Yes – replace duplicates with the imported version.\n"
+            "• No  – keep existing profiles and skip duplicates.",
+            parent=self._app.root,
+        )
+
+        try:
+            imported, skipped = self._app.profile_mgr.import_profiles(
+                filepath, overwrite=overwrite
+            )
+        except Exception as exc:
+            messagebox.showerror("Import Failed", str(exc), parent=self._app.root)
+            return
+
+        self._app.refresh_panel("profiles")
+        self._app.refresh_panel("dashboard")
+
+        messagebox.showinfo(
+            "Import Complete",
+            f"Imported: {imported} profile(s)\nSkipped:  {skipped} profile(s)",
+            parent=self._app.root,
+        )

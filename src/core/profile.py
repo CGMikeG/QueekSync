@@ -256,6 +256,71 @@ class ProfileManager:
         self.save(duplicated_profile)
         return duplicated_profile
 
+    # ------------------------------------------------------------------
+    # Export / Import
+    # ------------------------------------------------------------------
+
+    def export_profiles(self, filepath: str) -> int:
+        """Serialize all profiles to a single JSON file.
+
+        Returns the number of profiles written.
+        """
+        from datetime import datetime as _dt
+
+        data = {
+            "queeksync_export_version": "1",
+            "exported_at": _dt.utcnow().isoformat() + "Z",
+            "profiles": [p.to_dict() for p in self._profiles.values()],
+        }
+        with open(filepath, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2, ensure_ascii=False)
+        return len(data["profiles"])
+
+    def import_profiles(self, filepath: str, overwrite: bool = False) -> tuple:
+        """Load profiles from an exported JSON file.
+
+        Parameters
+        ----------
+        filepath:
+            Path to the file produced by :meth:`export_profiles`.
+        overwrite:
+            When *True*, replace an existing profile that shares the same ID.
+            When *False* (default), skip profiles whose ID already exists.
+
+        Returns
+        -------
+        (imported_count, skipped_count)
+        """
+        with open(filepath, "r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+
+        # Accept a bare list as well as the standard envelope
+        if isinstance(raw, list):
+            profile_dicts = raw
+        elif isinstance(raw, dict) and "profiles" in raw:
+            profile_dicts = raw["profiles"]
+        else:
+            raise ValueError("Unrecognised file format: expected a list or an object with a 'profiles' key.")
+
+        imported = 0
+        skipped = 0
+        for d in profile_dicts:
+            try:
+                p = Profile.from_dict(d)
+            except Exception as exc:
+                print(f"[ProfileManager] Skipping malformed profile entry: {exc}")
+                skipped += 1
+                continue
+
+            if p.id in self._profiles and not overwrite:
+                skipped += 1
+                continue
+
+            self.save(p)
+            imported += 1
+
+        return imported, skipped
+
     @property
     def directory(self) -> str:
         return str(self.profiles_dir)
