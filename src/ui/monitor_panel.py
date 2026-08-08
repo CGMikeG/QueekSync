@@ -4,7 +4,7 @@ Monitor panel – live sync progress, per-profile log stream, and history.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import customtkinter as ctk
 
@@ -153,6 +153,74 @@ class MonitorPanel(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
         self._build()
+
+        # Bind mouse wheel to scrollable frames
+        self._cards_frame.bind("<MouseWheel>", self._on_mousewheel)
+        self._cards_frame.bind("<Button-4>", self._on_mousewheel)
+        self._cards_frame.bind("<Button-5>", self._on_mousewheel)
+        self._log.bind("<MouseWheel>", self._on_mousewheel)
+        self._log.bind("<Button-4>", self._on_mousewheel)
+        self._log.bind("<Button-5>", self._on_mousewheel)
+
+    def _on_mousewheel(self, event) -> None:
+        """Route mouse wheel events to the appropriate scrollable widget."""
+        try:
+            # Determine which widget has focus or is under the mouse
+            widget = self._get_widget_under_mouse(event)
+            if widget:
+                # Delegate to the widget's own scroll handling
+                if hasattr(widget, '_text_widget'):
+                    # It's a LogViewer - let it handle itself
+                    widget._on_mousewheel(event)
+                elif hasattr(widget, '_parent_canvas'):
+                    # It's a CTkScrollableFrame - use canvas directly
+                    canvas = widget._parent_canvas
+                    delta = 1
+                    if hasattr(event, 'delta'):
+                        delta = -int(event.delta / 6) if event.delta > 0 else 1
+                    else:
+                        delta = 1 if event.num == 5 else -1
+                    
+                    current = canvas.yview()
+                    if current != (0.0, 1.0):
+                        canvas.yview_scroll(delta, "units")
+                return
+            
+            # Fallback: scroll the cards frame if it exists
+            if hasattr(self, '_cards_frame') and self._cards_frame:
+                if hasattr(self._cards_frame, '_parent_canvas'):
+                    canvas = self._cards_frame._parent_canvas
+                    delta = 1
+                    if hasattr(event, 'delta'):
+                        delta = -int(event.delta / 6) if event.delta > 0 else 1
+                    else:
+                        delta = 1 if event.num == 5 else -1
+                    
+                    current = canvas.yview()
+                    if current != (0.0, 1.0):
+                        canvas.yview_scroll(delta, "units")
+        except:
+            pass
+
+    def _get_widget_under_mouse(self, event) -> Optional[object]:
+        """Get the widget under the mouse cursor."""
+        try:
+            x, y = event.x_root, event.y_root
+            widget = self.winfo_containing(x, y)
+            # Walk up to find a scrollable frame or log viewer
+            while widget:
+                if widget == self._cards_frame or widget == self._log:
+                    return widget
+                # Check if it's inside one of our scrollable areas
+                parent = widget.master
+                while parent:
+                    if parent == self._cards_frame or parent == self._log:
+                        return parent
+                    parent = parent.master if hasattr(parent, 'master') else None
+                widget = parent
+        except:
+            pass
+        return None
 
     # ------------------------------------------------------------------
 

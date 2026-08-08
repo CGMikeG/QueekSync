@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from tkinter import messagebox
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import customtkinter as ctk
 
@@ -26,7 +26,34 @@ class ProfileCard(GlassCard):
 
         self._profile = profile
         self._app = app
+        self._hovering = False
         self._build()
+
+        # Add hover effects (border highlight, not background)
+        self._original_border_color = self.cget("border_color")
+        self._original_border_width = self.cget("border_width")
+        self.bind("<Enter>", self._on_hover_enter)
+        self.bind("<Leave>", self._on_hover_leave)
+
+    def _on_hover_enter(self, event) -> None:
+        """Highlight card border on hover."""
+        if self._hovering:
+            return
+        self._hovering = True
+        self.configure(
+            border_color=T.ACCENT,
+            border_width=2,
+        )
+
+    def _on_hover_leave(self, event) -> None:
+        """Restore card border when hover ends."""
+        if not self._hovering:
+            return
+        self._hovering = False
+        self.configure(
+            border_color=self._original_border_color,
+            border_width=self._original_border_width,
+        )
 
     def _build(self) -> None:
         p = self._profile
@@ -234,9 +261,94 @@ class DashboardPanel(ctk.CTkFrame):
         kw.setdefault("fg_color", "transparent")
         super().__init__(master, **kw)
         self._app = app
+        self._scroll: Optional[ctk.CTkScrollableFrame] = None
+        self._resize_timer = None
+        self._current_cols = 3  # Default to 3 columns
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
         self._build()
+
+    def _on_root_mousewheel(self, event) -> None:
+        """Route mouse wheel events to the scrollable frame."""
+        if not self._scroll or not self._scroll.winfo_exists():
+            return
+        self._scroll_mousewheel(event)
+
+    def _on_scroll_mousewheel(self, event) -> None:
+        """Direct scroll event handler."""
+        if not self._scroll or not self._scroll.winfo_exists():
+            return
+        self._scroll_mousewheel(event)
+
+    def _scroll_mousewheel(self, event) -> None:
+        """Handle mouse wheel scroll by invoking canvas yview."""
+        try:
+            # Determine scroll direction
+            delta = 1
+            if hasattr(event, 'delta'):
+                # Windows/Mac
+                delta = -int(event.delta / 6)
+            else:
+                # Linux
+                delta = -event.delta if hasattr(event, 'delta') else (1 if event.num == 5 else -1)
+            
+            # Get the internal canvas and scroll it directly
+            if hasattr(self._scroll, '_parent_canvas'):
+                canvas = self._scroll._parent_canvas
+                current = canvas.yview()
+                if current != (0.0, 1.0):  # Only scroll if not at edge
+                    canvas.yview_scroll(delta, "units")
+        except Exception as e:
+            print(f"[Dashboard] Scroll error: {e}")
+
+    def _on_page_up(self, event) -> None:
+        """Handle Page Up key."""
+        self._scroll_key_navigation(-3)
+
+    def _on_page_down(self, event) -> None:
+        """Handle Page Down key."""
+        self._scroll_key_navigation(3)
+
+    def _on_home(self, event) -> None:
+        """Handle Home key."""
+        self._scroll_to_top()
+
+    def _on_end(self, event) -> None:
+        """Handle End key."""
+        self._scroll_to_bottom()
+
+    def _scroll_key_navigation(self, units: int) -> None:
+        """Scroll by specified units."""
+        if not self._scroll or not self._scroll.winfo_exists():
+            return
+        try:
+            if hasattr(self._scroll, '_parent_canvas'):
+                canvas = self._scroll._parent_canvas
+                current = canvas.yview()
+                if current != (0.0, 1.0):
+                    canvas.yview_scroll(units, "units")
+        except:
+            pass
+
+    def _scroll_to_top(self) -> None:
+        """Scroll to top."""
+        if not self._scroll or not self._scroll.winfo_exists():
+            return
+        try:
+            if hasattr(self._scroll, '_parent_canvas'):
+                self._scroll._parent_canvas.yview("moveto", 0.0)
+        except:
+            pass
+
+    def _scroll_to_bottom(self) -> None:
+        """Scroll to bottom."""
+        if not self._scroll or not self._scroll.winfo_exists():
+            return
+        try:
+            if hasattr(self._scroll, '_parent_canvas'):
+                self._scroll._parent_canvas.yview("moveto", 1.0)
+        except:
+            pass
 
     def _build(self) -> None:
         profiles = self._app.profile_mgr.all()
@@ -276,18 +388,18 @@ class DashboardPanel(ctk.CTkFrame):
         )
 
         # ---- Scrollable profile cards --------------------------------
-        scroll = ctk.CTkScrollableFrame(
+        self._scroll = ctk.CTkScrollableFrame(
             self,
             fg_color="transparent",
             scrollbar_button_color=T.BORDER,
             scrollbar_button_hover_color=T.BORDER_BRIGHT,
         )
-        scroll.grid(row=2, column=0, sticky="nsew", padx=T.PAD_LG, pady=T.PAD_SM)
+        self._scroll.grid(row=2, column=0, sticky="nsew", padx=T.PAD_LG, pady=T.PAD_SM)
         self.grid_rowconfigure(2, weight=1)
 
         if not profiles:
             ctk.CTkLabel(
-                scroll,
+                self._scroll,
                 text="No profiles yet.\nClick  ＋ New Profile  to get started.",
                 font=ctk.CTkFont(size=14),
                 text_color=T.TEXT_DIM,
@@ -295,20 +407,107 @@ class DashboardPanel(ctk.CTkFrame):
             ).pack(expand=True, pady=80)
             return
 
-        # 3-column responsive grid of cards
-        col_count = 3
-        card_width = 300
-        column_width = card_width + T.CARD_GAP
+        # Bind mouse wheel and keyboard events after scroll frame is created
+        self.after(50, self._bind_scroll_events)
 
+        # Populate grid and bind resize event
+        self._populate_grid(profiles)
+        self._app.root.bind('<Configure>', self._on_window_resize)
+
+    def _bind_scroll_events(self) -> None:
+        """Bind scroll events after the scroll frame is fully created."""
+        if not self._scroll or not self._scroll.winfo_exists():
+            return
+        
+        # CRITICAL: Update root to calculate canvas scrollregion AFTER content is added
+        self._app.root.update_idletasks()
+        
+        # Bind mouse wheel and keyboard events
+        self._scroll.bind("<MouseWheel>", self._on_scroll_mousewheel)
+        self._scroll.bind("<Button-4>", self._on_scroll_mousewheel)
+        self._scroll.bind("<Button-5>", self._on_scroll_mousewheel)
+        self._scroll.bind("<Prior>", self._on_page_up)
+        self._scroll.bind("<Next>", self._on_page_down)
+        self._scroll.bind("<Home>", self._on_home)
+        self._scroll.bind("<End>", self._on_end)
+
+    def _populate_grid(self, profiles: List) -> None:
+        """Populate the card grid with dynamic column calculation."""
+        scroll = self._scroll
+        if scroll is None or not scroll.winfo_exists():
+            return
+
+        # Calculate columns based on available width
+        col_count = self._calculate_columns()
+        
+        # Get current column count
+        current_cols = self._current_cols if hasattr(self, '_current_cols') else 3
+        
+        # Only recalculate if column count changed
+        if col_count == current_cols:
+            return
+            
+        self._current_cols = col_count
+
+        # Clear existing cards
+        for child in scroll.winfo_children():
+            if isinstance(child, ProfileCard):
+                child.destroy()
+
+        # Configure grid columns
+        min_card_width = 280
         for col_ in range(col_count):
-            scroll.grid_columnconfigure(col_, weight=0, minsize=column_width, pad=T.CARD_GAP)
+            scroll.grid_columnconfigure(col_, weight=0, minsize=min_card_width + T.CARD_GAP, pad=T.CARD_GAP)
         scroll.grid_columnconfigure(col_count, weight=1)
 
+        # Place cards
         for idx, profile in enumerate(sorted(profiles, key=lambda p: p.name)):
             row_ = idx // col_count
             col_ = idx % col_count
             card = ProfileCard(scroll, profile, self._app)
             card.grid(row=row_, column=col_, padx=(0, T.CARD_GAP), pady=T.CARD_GAP // 2, sticky="nw")
+
+    def _calculate_columns(self) -> int:
+        """Calculate optimal column count based on available width."""
+        min_card_width = 280
+        gap = T.CARD_GAP
+        max_cols = 4
+
+        # Get available width from scrollable frame
+        scroll = self._scroll
+        if scroll is None or not scroll.winfo_exists():
+            return 3  # Default to 3 if not available
+
+        try:
+            container_width = scroll.winfo_width()
+            if container_width < 100:  # Not visible yet or too small
+                return 1
+        except Exception:
+            return 3
+
+        # Account for padding and scrollbar
+        available = container_width - (gap * (max_cols + 1)) - 40  # 40px for scrollbar area
+
+        cols = max(1, min(max_cols, available // (min_card_width + gap)))
+        return cols
+
+    def _on_window_resize(self, event) -> None:
+        """Handle window resize to recalculate grid."""
+        # Debounce resize events (300ms to prevent flickering)
+        if hasattr(self, '_resize_timer') and self._resize_timer:
+            self.after_cancel(self._resize_timer)
+        self._resize_timer = self.after(300, self._recalculate_grid)
+
+    def _recalculate_grid(self) -> None:
+        """Recalculate and repopulate the card grid."""
+        if not hasattr(self, '_scroll') or not self._scroll or not self._scroll.winfo_exists():
+            return
+
+        profiles = self._app.profile_mgr.all()
+        if not profiles:
+            return
+
+        self._populate_grid(profiles)
 
     # ------------------------------------------------------------------
 

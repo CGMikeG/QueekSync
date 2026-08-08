@@ -166,6 +166,78 @@ class ProfilesPanel(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
         self._build()
 
+    def _on_mousewheel(self, event) -> None:
+        """Route mouse wheel events to the scrollable frame."""
+        try:
+            # Find the scrollable frame in this panel
+            for child in self.winfo_children():
+                if isinstance(child, ctk.CTkScrollableFrame):
+                    delta = 1 if event.num == 5 else -1
+                    if hasattr(event, 'delta'):
+                        delta = -int(event.delta / 6) if event.delta > 0 else 1
+                    
+                    # Use canvas-based scrolling like dashboard
+                    if hasattr(child, '_parent_canvas'):
+                        canvas = child._parent_canvas
+                        current = canvas.yview()
+                        if current != (0.0, 1.0):
+                            canvas.yview_scroll(delta, "units")
+                    return
+        except:
+            pass
+
+    def _on_page_up(self, event) -> None:
+        """Handle Page Up key."""
+        self._scroll_key_navigation(-3)
+
+    def _on_page_down(self, event) -> None:
+        """Handle Page Down key."""
+        self._scroll_key_navigation(3)
+
+    def _on_home(self, event) -> None:
+        """Handle Home key."""
+        self._scroll_to_top()
+
+    def _on_end(self, event) -> None:
+        """Handle End key."""
+        self._scroll_to_bottom()
+
+    def _scroll_key_navigation(self, units: int) -> None:
+        """Scroll by specified units."""
+        for child in self.winfo_children():
+            if isinstance(child, ctk.CTkScrollableFrame):
+                try:
+                    if hasattr(child, '_parent_canvas'):
+                        canvas = child._parent_canvas
+                        current = canvas.yview()
+                        if current != (0.0, 1.0):
+                            canvas.yview_scroll(units, "units")
+                except:
+                    pass
+                return
+
+    def _scroll_to_top(self) -> None:
+        """Scroll to top."""
+        for child in self.winfo_children():
+            if isinstance(child, ctk.CTkScrollableFrame):
+                try:
+                    if hasattr(child, '_parent_canvas'):
+                        child._parent_canvas.yview("moveto", 0.0)
+                except:
+                    pass
+                return
+
+    def _scroll_to_bottom(self) -> None:
+        """Scroll to bottom."""
+        for child in self.winfo_children():
+            if isinstance(child, ctk.CTkScrollableFrame):
+                try:
+                    if hasattr(child, '_parent_canvas'):
+                        child._parent_canvas.yview("moveto", 1.0)
+                except:
+                    pass
+                return
+
     def _build(self) -> None:
         profiles = self._app.profile_mgr.all()
         profiles_sorted = sorted(profiles, key=lambda p: p.name)
@@ -261,6 +333,17 @@ class ProfilesPanel(ctk.CTkFrame):
         scroll.grid(row=2, column=0, sticky="nsew", padx=T.PAD_LG, pady=T.PAD_SM)
         self.grid_rowconfigure(2, weight=1)
 
+        # Bind mouse wheel
+        scroll.bind("<MouseWheel>", self._on_mousewheel)
+        scroll.bind("<Button-4>", self._on_mousewheel)
+        scroll.bind("<Button-5>", self._on_mousewheel)
+        
+        # Bind keyboard navigation
+        scroll.bind("<Prior>", self._on_page_up)
+        scroll.bind("<Next>", self._on_page_down)
+        scroll.bind("<Home>", self._on_home)
+        scroll.bind("<End>", self._on_end)
+
         if not profiles:
             ctk.CTkLabel(
                 scroll,
@@ -275,6 +358,9 @@ class ProfilesPanel(ctk.CTkFrame):
             ProfileRow(scroll, p, self._app).pack(
                 fill="x", pady=(0, T.CARD_GAP // 2)
             )
+
+        # CRITICAL: Update root to calculate canvas scrollregion AFTER content is added
+        self._app.root.update_idletasks()
 
     # ------------------------------------------------------------------
 

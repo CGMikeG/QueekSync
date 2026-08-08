@@ -13,7 +13,7 @@ from ui.components import Separator, attach_tooltip
 
 
 NAV_ITEMS: List[Tuple[str, str, str]] = [
-    ("dashboard",  "⬡  Dashboard",  "Overview of all profiles and activity"),
+    ("dashboard",  "◈  Dashboard",  "Overview of all profiles and activity"),
     ("profiles",   "☰  Profiles",   "Manage sync profiles"),
     ("monitor",    "◉  Monitor",    "Live sync progress and logs"),
     ("settings",   "⚙  Settings",   "Application preferences"),
@@ -83,7 +83,7 @@ class Sidebar(ctk.CTkFrame):
             btn.pack(fill="x", pady=2)
             attach_tooltip(
                 btn,
-                text=f"Open {label.replace('⬡', '').replace('☰', '').replace('◉', '').replace('⚙', '').strip()}. Example: {_tip}."
+                text=f"Open {label.replace('◈', '').replace('☰', '').replace('◉', '').replace('⚙', '').strip()}. Example: {_tip}."
             )
             self._nav_btns[page_id] = btn
 

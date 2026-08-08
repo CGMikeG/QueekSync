@@ -386,9 +386,30 @@ class LogViewer(ctk.CTkTextbox):
         self._text_widget().tag_configure("warning", foreground=T.WARNING)
         self._text_widget().tag_configure("ts",      foreground=T.TEXT_DIM)
 
+        # Enable mouse wheel scrolling
+        self._text_widget().bind("<MouseWheel>", self._on_mousewheel)
+        self._text_widget().bind("<Button-4>", self._on_mousewheel)
+        self._text_widget().bind("<Button-5>", self._on_mousewheel)
+        self.bind("<MouseWheel>", self._on_mousewheel)
+        self.bind("<Button-4>", self._on_mousewheel)
+        self.bind("<Button-5>", self._on_mousewheel)
+
     def _text_widget(self) -> tk.Text:
         # customtkinter wraps an internal tk.Text
         return self._textbox  # type: ignore[attr-defined]
+
+    def _on_mousewheel(self, event) -> None:
+        """Handle mouse wheel scrolling."""
+        # Determine scroll direction
+        if event.num == 4 or (hasattr(event, 'delta') and event.delta > 0):
+            delta = -1
+        elif event.num == 5 or (hasattr(event, 'delta') and event.delta < 0):
+            delta = 1
+        else:
+            delta = -1
+
+        # Scroll the text widget
+        self._text_widget().yview_scroll(delta, "units")
 
     def append(self, text: str, tag: str = "info") -> None:
         tw = self._text_widget()
